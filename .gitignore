@@ -1,0 +1,16 @@
+# Build output
+/bin/
+/dist/
+/coverage/
+
+# Local Code Clearance state and reports
+/.clearance/
+/clearance-report.*
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/

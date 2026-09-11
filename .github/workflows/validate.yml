@@ -1,0 +1,56 @@
+name: Validate repository
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required files
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            README.md
+            LICENSE
+            CHANGELOG.md
+            CONTRIBUTING.md
+            SECURITY.md
+            CODE_OF_CONDUCT.md
+            AGENTS.md
+            docs/SPEC.md
+            docs/ARCHITECTURE.md
+            docs/ROADMAP.md
+            docs/RELEASE_CHECKLIST.md
+          )
+          for file in "${required[@]}"; do
+            test -s "$file" || { echo "Missing or empty: $file"; exit 1; }
+          done
+
+      - name: Reject unresolved merge markers and machine paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE '^(<<<<<<<|=======|>>>>>>>)|/Users/[^/]+/|<owner>' \
+            --exclude-dir=.git --exclude=validate.yml .; then
+            echo "Repository contains a merge marker, machine-specific path, or owner placeholder."
+            exit 1
+          fi
+
+      - name: Reject common credential patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE '(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|ntn_[A-Za-z0-9]{20,})' \
+            --exclude-dir=.git --exclude=validate.yml .; then
+            echo "Potential credential detected."
+            exit 1
+          fi
