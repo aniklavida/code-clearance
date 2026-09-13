@@ -1,6 +1,6 @@
 # Build-to-release roadmap
 
-This roadmap ends at a useful, market-ready v1.0. Detailed cards belong in Notion only for the current and next milestone.
+This roadmap ends at a useful, market-ready v1.0. Each milestone below is detailed only when it becomes the current or the next one.
 
 ## 0. Foundation and interface validation
 
