@@ -9,7 +9,7 @@
 ## Verification
 
 - [ ] Unit, parser-fixture, integration and end-to-end tests pass.
-- [ ] Clean macOS and Linux installation walkthroughs pass.
+- [ ] Clean Linux, macOS and Windows installation walkthroughs pass.
 - [ ] CLI, MCP and GitHub Action policy parity is verified.
 - [ ] Code Clearance successfully evaluates its own repository.
 

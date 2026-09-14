@@ -1,10 +1,10 @@
 # Build-to-release roadmap
 
-This roadmap ends at a useful, market-ready v1.0. Each milestone below is detailed only when it becomes the current or the next one.
+This roadmap ends at a useful, market-ready v1.0, supporting Linux, macOS and Windows. Each milestone below is detailed only when it becomes the current or the next one. Every item is **Planned for v1.0** unless a later status note says otherwise; nothing described here is implemented yet.
 
-## 0. Foundation and interface validation
+## 0. Foundation and interface validation — complete
 
-Validate Go process orchestration, SARIF ingestion and the official MCP flow; then lock the report schema and initial adapter contracts.
+Validated Go process orchestration, SARIF ingestion and the official MCP flow; locked Go, the official MCP Go SDK and the lightweight-core-plus-external-adapters architecture. Windows process-tree termination (job objects, alongside the POSIX process-group approach) and the exact platform/toolchain proof are being finished before implementation starts.
 
 **Done:** one MCP call runs a fixture adapter and returns normalized, commit-bound evidence.
 
@@ -30,7 +30,7 @@ Complete init/doctor onboarding, GitHub Action and PR annotations, baselines, ex
 
 Test failure boundaries and malicious configuration; stabilize schemas; complete quick start, architecture, adapter guide, examples, security policy, contribution guide and third-party notices; dogfood Code Clearance on itself.
 
-**Done:** all v1.0 acceptance criteria pass on clean macOS/Linux environments and an independent documentation walkthrough succeeds.
+**Done:** all v1.0 acceptance criteria pass on clean Linux, macOS and Windows environments and an independent documentation walkthrough succeeds.
 
 ## 5. Public release and marketing handoff
 
