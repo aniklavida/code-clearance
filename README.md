@@ -2,9 +2,9 @@
 
 Evidence-based clearance for AI-generated code.
 
-> **Pre-implementation:** Code Clearance has a version 1.0 product specification and repository foundation, but no working release yet. Capabilities below are planned unless explicitly marked implemented.
+> **Pre-implementation:** Code Clearance has a version 1.0 product specification, a locked technical foundation (Go, the official MCP Go SDK, and a lightweight core with external scanner adapters) and a repository foundation, but no working release yet. Capabilities below are planned unless explicitly marked implemented.
 
-Code Clearance will be a local-first assurance engine that coding agents, developers and CI workflows can invoke after meaningful code changes. It will coordinate trusted scanners and repository checks, normalize and challenge findings, verify fixes by rerunning evidence, and produce a commit-bound report showing what passed, failed, remained unknown or was accepted as risk.
+Code Clearance will be a local-first assurance engine that coding agents, developers and CI workflows can invoke after meaningful code changes, on Linux, macOS and Windows. It will coordinate trusted scanners and repository checks, normalize and challenge findings, verify fixes by rerunning evidence, and produce a commit-bound report showing what passed, failed, remained unknown or was accepted as risk.
 
 The intended workflow is:
 
@@ -16,7 +16,7 @@ Code Clearance will not promise zero bugs. A result must disclose its scope, too
 
 ## Planned interfaces
 
-- One cross-platform `code-clearance` CLI core
+- One cross-platform `code-clearance` CLI core, for Linux, macOS and Windows
 - Local MCP server for compatible coding-agent hosts
 - GitHub Action and pull-request annotations
 - Terminal, JSON, SARIF-compatible and local HTML reports
