@@ -1,7 +1,7 @@
 # Code Clearance — public product specification
 
 **Status:** Pre-implementation v1.0 specification
-**Version target:** Complete public v1.0
+**Version target:** Complete public v1.0, supporting Linux, macOS and Windows
 
 ## Product
 
@@ -78,7 +78,7 @@ MCP servers are passive. Automatic use is established through host instructions,
 - GitHub Action and pull-request annotations.
 - Guided setup/doctor flow for missing tools.
 - Baselines and risk acceptance with reason, owner and expiry.
-- macOS/Linux release binaries, checksums and release notes.
+- Linux, macOS and Windows release binaries, checksums and release notes.
 - Tested examples for JavaScript/TypeScript, Python and Go.
 - Contributor, security, architecture, adapter and configuration documentation.
 
@@ -112,13 +112,12 @@ Every finding records its source adapter, tool version, rule, original and norma
 - IDE extension.
 - A new proprietary scanner engine.
 - Built-in paid AI model or mandatory cloud account.
-- Windows-first support.
 - Automatic mutation without approval.
 - Claims of universal language or bug coverage.
 
 ## Release acceptance
 
-- A fresh user can install, configure MCP, initialize a sample repo and obtain a report using only the quick start.
+- A fresh user can install, configure MCP, initialize a sample repo and obtain a report using only the quick start, on Linux, macOS or Windows.
 - At least Semgrep, Gitleaks and one dependency scanner work through independent adapters.
 - Duplicate findings are correlated without losing source evidence.
 - The full scan → challenge → fix → verify → report flow works through MCP.
