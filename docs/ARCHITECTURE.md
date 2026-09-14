@@ -1,8 +1,12 @@
 # Architecture
 
-## Decision under validation
+**Status:** Planned for v1.0. Nothing in this document is implemented yet.
 
-The provisional implementation is Go with the official MCP Go SDK. One application core serves CLI, local stdio MCP and later GitHub Action entry points. The foundation spike must validate this before the decision is locked.
+## Foundation decision
+
+Code Clearance is implemented in Go, using the official MCP Go SDK. One application core serves CLI, local stdio MCP and later GitHub Action entry points. The core is deliberately lightweight: it orchestrates external scanners as separate processes (for example Semgrep, Gitleaks and OSV-Scanner) rather than bundling or reimplementing their engines, and normalizes their output into one evidence model.
+
+Version 1.0 targets Linux, macOS and Windows. Process orchestration uses a shared runner interface with a platform-specific process-tree termination strategy (POSIX process groups on Linux/macOS, job objects on Windows), so a hung or crashed scanner's entire process tree is reliably stopped everywhere, not only its immediate process.
 
 ## System flow
 
