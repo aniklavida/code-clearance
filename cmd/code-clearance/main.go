@@ -30,6 +30,9 @@ func main() {
 		os.Exit(runScan(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "serve":
 		os.Exit(runServe(ctx, os.Args[2:], os.Stderr))
+	case "version", "--version", "-v":
+		reportVersion(os.Stdout)
+		os.Exit(0)
 	case "-h", "--help", "help":
 		printUsage(os.Stdout)
 		os.Exit(0)
@@ -49,6 +52,7 @@ Usage:
 Commands:
   scan    Run clearance scanners and report evidence
   serve   Serve clearance MCP tools over stdio
+  version Print the version, and whether this build is signed
 `)
 }
 
