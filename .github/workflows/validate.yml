@@ -2,7 +2,7 @@ name: Validate repository
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 permissions:
@@ -54,3 +54,44 @@ jobs:
             echo "Potential credential detected."
             exit 1
           fi
+
+  go:
+    name: Go build, vet and test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # v1.0 supports Linux, macOS and Windows, so all three are built and
+        # tested here rather than assumed from one.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change these files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      # The scanner adapters shell out to gitleaks and osv-scanner. Those tests
+      # skip, naming the missing binary, when it is not installed — so this job
+      # proves the core, the normalizer and the MCP surface on every platform,
+      # and the real-tool adapters only where the tools exist.
+      - name: Test
+        run: go test ./...
