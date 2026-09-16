@@ -1,16 +1,10 @@
 # Build output
-/bin/
+/code-clearance
 /dist/
-/coverage/
 
-# Local Code Clearance state and reports
-/.clearance/
-/clearance-report.*
+# Go
+*.test
+*.out
 
-# Local environment and editor files
-.env
-.env.*
-!.env.example
+# macOS
 .DS_Store
-.idea/
-.vscode/

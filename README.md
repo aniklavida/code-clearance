@@ -30,4 +30,18 @@ Code Clearance will not promise zero bugs. A result must disclose its scope, too
 
 ## Current status
 
-The public repository contains the product specification and contribution foundation. The engine has not been implemented and no release has been published.
+The product specification, the contribution foundation, and the first working slice of the engine are here. **No release has been published**, and most capabilities listed above remain planned.
+
+What runs today: a bounded process runner with cancellation and captured exit state, SARIF 2.1.0 normalization, adapters for `gitleaks` and `osv-scanner`, one MCP tool over the official Go SDK, and a single binary exposing the same core through `scan` and `serve`. Scan results are bound to the repository, the commit and a dirty-tree fingerprint.
+
+## Installation (planned)
+
+Nothing is published yet, so neither path below works today. They are recorded so the shape is not a surprise later.
+
+**Tagged release binaries** will be the supported way to install, for Linux, macOS and Windows, with checksums and signing where the platform supports it. A tool whose subject is supply-chain assurance should ship artifacts you can verify.
+
+**`go install github.com/aniklavida/code-clearance/cmd/code-clearance@latest`** will also work, for people who already have a Go toolchain and prefer it. It builds on your machine, so it produces nothing signed — `code-clearance version` says so rather than leaving you to guess.
+
+Package managers such as Homebrew are not planned for the first release. They would not cover Windows, so they solve none of the platform problem.
+
+External scanners are invoked as separate processes and are never vendored: you install `gitleaks` and `osv-scanner` yourself, and Code Clearance reports honestly when a required one is missing.

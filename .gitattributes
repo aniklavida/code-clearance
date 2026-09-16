@@ -1,0 +1,8 @@
+# Go source is compared byte for byte by `gofmt -l` in CI. Left to its
+# default, Git checks these files out with CRLF on Windows and every file
+# reports as unformatted there and only there.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
