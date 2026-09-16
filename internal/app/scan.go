@@ -40,7 +40,7 @@ func (e *Engine) Scan(ctx context.Context, targetDir string) (evidence.Report, e
 		absDir = targetDir
 	}
 
-	target := detectTarget(ctx, absDir)
+	target := DetectTarget(ctx, absDir)
 
 	e.mu.RLock()
 	adapters := append([]ScannerAdapter(nil), e.adapters...)
@@ -74,12 +74,4 @@ func DefaultEngine() *Engine {
 	return defaultEngine
 }
 
-func detectTarget(ctx context.Context, targetDir string) evidence.TargetBinding {
-	return evidence.TargetBinding{
-		Repository:  evidence.NotAGitRepository,
-		Commit:      evidence.NotAGitRepository,
-		Dirty:       false,
-		Fingerprint: evidence.NotAGitRepository,
-	}
-}
 
