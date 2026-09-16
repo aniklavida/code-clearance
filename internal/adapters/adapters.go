@@ -7,6 +7,7 @@ package adapters
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -159,3 +160,26 @@ func tail(b []byte, n int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// DefaultScanners returns the default adapter suite wired for clearance.
+func DefaultScanners() []app.ScannerAdapter {
+	return []app.ScannerAdapter{
+		func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+			return []evidence.RunOutcome{Gitleaks(ctx, targetDir)}
+		},
+		func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+			lockfile := filepath.Join(targetDir, "package-lock.json")
+			if _, err := os.Stat(lockfile); err != nil {
+				return nil
+			}
+			return []evidence.RunOutcome{OSVScanner(ctx, lockfile)}
+		},
+	}
+}
+
+func init() {
+	for _, a := range DefaultScanners() {
+		app.RegisterDefaultAdapter(a)
+	}
+}
+

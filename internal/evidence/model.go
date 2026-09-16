@@ -77,3 +77,59 @@ const (
 	StatusTimedOut     RunStatus = "timed-out"     // killed after exceeding its timeout
 	StatusNotInstalled RunStatus = "not-installed" // executable missing on PATH
 )
+
+// NotAGitRepository is the explicit value used when the target directory
+// is not inside a git repository.
+const NotAGitRepository = "not-a-git-repository"
+
+// CleanTreeFingerprint is the explicit fingerprint for a clean working tree.
+const CleanTreeFingerprint = "clean"
+
+// TargetBinding binds evidence to the repository, commit SHA, and
+// working-tree state of the scanned target.
+type TargetBinding struct {
+	// Repository identifies the target repository (remote URL or normalized root directory name).
+	// If the target is not a git repository, it explicitly reports NotAGitRepository.
+	Repository string `json:"repository"`
+
+	// Commit is the HEAD commit SHA. If the target is not a git repository,
+	// it explicitly reports NotAGitRepository rather than emitting a blank field.
+	Commit string `json:"commit"`
+
+	// Dirty indicates whether the working tree had uncommitted modifications.
+	Dirty bool `json:"dirty"`
+
+	// Fingerprint distinguishes a clean checkout from a modified working tree.
+	// For a clean tree, it is CleanTreeFingerprint ("clean").
+	// For a dirty tree, it is a deterministic hash over the uncommitted changes.
+	// For a non-git directory, it is NotAGitRepository.
+	Fingerprint string `json:"fingerprint"`
+}
+
+// Report captures the full clearance scan run, binding all adapter outcomes
+// to the target tree state.
+type Report struct {
+	Target TargetBinding `json:"target"`
+	Runs   []RunOutcome  `json:"runs"`
+}
+
+// Commit returns the commit SHA of the target, or "not-a-git-repository".
+func (r Report) Commit() string {
+	return r.Target.Commit
+}
+
+// Repository returns the repository identity of the target.
+func (r Report) Repository() string {
+	return r.Target.Repository
+}
+
+// Dirty returns true if the target working tree had uncommitted modifications.
+func (r Report) Dirty() bool {
+	return r.Target.Dirty
+}
+
+// Fingerprint returns the deterministic fingerprint of the working tree.
+func (r Report) Fingerprint() string {
+	return r.Target.Fingerprint
+}
+

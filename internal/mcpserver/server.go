@@ -7,11 +7,11 @@ package mcpserver
 
 import (
 	"context"
-	"path/filepath"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/aniklavida/code-clearance/internal/adapters"
+	_ "github.com/aniklavida/code-clearance/internal/adapters"
+	"github.com/aniklavida/code-clearance/internal/app"
 	"github.com/aniklavida/code-clearance/internal/evidence"
 )
 
@@ -21,15 +21,12 @@ type ScanArgs struct {
 	TargetDir string `json:"target_dir" jsonschema:"absolute path to the directory to scan"`
 }
 
-// ScanOutput is the structured tool output: one outcome per adapter run,
-// each carrying its own normalized findings. It mirrors what a real
-// clearance_run MCP tool would return, minus policy evaluation.
-type ScanOutput struct {
-	Runs []evidence.RunOutcome `json:"runs"`
-}
+// ScanOutput is the structured tool output: a complete evidence report
+// bound to repository identity, commit SHA, and dirty-tree fingerprint.
+type ScanOutput = evidence.Report
 
 // NewServer builds the MCP server with a single tool,
-// run_clearance_scan, that runs the gitleaks and osv-scanner adapters
+// run_clearance_scan, that executes the shared clearance scan core
 // against the given directory and returns normalized evidence.
 func NewServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
@@ -39,23 +36,26 @@ func NewServer() *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "run_clearance_scan",
-		Description: "Run the gitleaks and osv-scanner adapters against a " +
-			"target directory and return normalized, evidence-backed findings.",
-	}, runClearanceScan)
+		Description: "Run the clearance scanners against a " +
+			"target directory and return normalized, evidence-backed findings bound to commit and tree state.",
+	}, RunClearanceScan)
 
 	return server
 }
 
-func runClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanArgs) (*mcp.CallToolResult, ScanOutput, error) {
-	out := ScanOutput{}
-
-	out.Runs = append(out.Runs, adapters.Gitleaks(ctx, args.TargetDir))
-
-	lockfile := filepath.Join(args.TargetDir, "package-lock.json")
-	out.Runs = append(out.Runs, adapters.OSVScanner(ctx, lockfile))
-
-	// Returning (result, output, err) with result==nil lets AddTool
-	// build the CallToolResult content automatically from the
-	// structured output (see the SDK's generic tool handler behavior).
-	return nil, out, nil
+// RunClearanceScan is the tool handler delegating execution to the shared core.
+func RunClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanArgs) (*mcp.CallToolResult, ScanOutput, error) {
+	report, err := app.Scan(ctx, args.TargetDir)
+	if err != nil {
+		return nil, report, err
+	}
+	return nil, report, nil
 }
+
+// ServeStdio runs the MCP server over standard I/O until the context is cancelled
+// or the client disconnects.
+func ServeStdio(ctx context.Context) error {
+	server := NewServer()
+	return server.Run(ctx, &mcp.StdioTransport{})
+}
+
