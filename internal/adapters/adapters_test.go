@@ -123,6 +123,7 @@ func TestGitleaks_RealProcess_CleanDirectoryReportsOK(t *testing.T) {
 }
 
 func TestOSVScanner_RealProcess_HungProcessKilledByTimeout(t *testing.T) {
+	requireTool(t, "osv-scanner")
 	// Prove the same timeout/kill guarantee validated in the runner unit
 	// tests also holds when wired to a real external scanner binary, not
 	// just a synthetic `sleep`. A 1-nanosecond timeout guarantees the
