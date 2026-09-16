@@ -73,5 +73,3 @@ func Scan(ctx context.Context, targetDir string) (evidence.Report, error) {
 func DefaultEngine() *Engine {
 	return defaultEngine
 }
-
-

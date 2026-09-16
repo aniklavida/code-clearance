@@ -58,4 +58,3 @@ func ServeStdio(ctx context.Context) error {
 	server := NewServer()
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
-

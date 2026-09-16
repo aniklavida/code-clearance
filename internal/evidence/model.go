@@ -132,4 +132,3 @@ func (r Report) Dirty() bool {
 func (r Report) Fingerprint() string {
 	return r.Target.Fingerprint
 }
-

@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -131,4 +132,34 @@ func TestOSVScanner_RealProcess_HungProcessKilledByTimeout(t *testing.T) {
 		t.Fatalf("real-tool kill took %v", elapsed)
 	}
 	t.Logf("osv-scanner killed after %v under a 1ns timeout", elapsed)
+}
+
+// The card's headline safety constraint is that a killed or timed-out adapter
+// surfaces as unavailable evidence, never as a pass. The engine-level test for
+// this builds its own status mapping inside the test body, so it proves the
+// runner detects a timeout but never exercises the mapping in this package —
+// the code that actually decides whether a dead check reports as OK.
+//
+// This drives the real adapter, with a real process, killed by a real deadline.
+func TestGitleaks_TimedOutRunIsNeverReportedAsAPass(t *testing.T) {
+	if _, err := exec.LookPath("gitleaks"); err != nil {
+		t.Skip("gitleaks is not installed; this test needs the real binary to be killed mid-run")
+	}
+
+	// A deadline short enough that the process cannot finish, applied to the
+	// real adapter rather than to a stand-in.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+
+	outcome := Gitleaks(ctx, secretFixtureDir(t))
+
+	if outcome.Status == evidence.StatusOK {
+		t.Fatal("a killed gitleaks run reported as a pass — a check that never completed must never read as clean")
+	}
+	if outcome.Status != evidence.StatusTimedOut {
+		t.Fatalf("status = %s, want %s", outcome.Status, evidence.StatusTimedOut)
+	}
+	if len(outcome.Findings) != 0 {
+		t.Fatalf("a killed run reported %d findings; it produced no evidence at all", len(outcome.Findings))
+	}
 }

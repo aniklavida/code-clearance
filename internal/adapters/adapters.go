@@ -182,4 +182,3 @@ func init() {
 		app.RegisterDefaultAdapter(a)
 	}
 }
-
