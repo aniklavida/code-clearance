@@ -12,6 +12,16 @@ import (
 	"github.com/aniklavida/code-clearance/internal/evidence"
 )
 
+// requireTool skips when a scanner this project drives as a separate process
+// is not installed. The skip names the binary, so a skipped run reads as "the
+// tool is missing here" rather than quietly looking like a pass.
+func requireTool(t *testing.T, name string) {
+	t.Helper()
+	if _, err := exec.LookPath(name); err != nil {
+		t.Skipf("%s is not installed; this test drives the real binary", name)
+	}
+}
+
 func fixtureDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -69,6 +79,7 @@ func secretFixtureDir(t *testing.T) string {
 }
 
 func TestGitleaks_RealProcess_FindsFixtureSecrets(t *testing.T) {
+	requireTool(t, "gitleaks")
 	dir := secretFixtureDir(t)
 	outcome := Gitleaks(context.Background(), dir)
 
@@ -82,6 +93,7 @@ func TestGitleaks_RealProcess_FindsFixtureSecrets(t *testing.T) {
 }
 
 func TestOSVScanner_RealProcess_FindsVulnerableLockfile(t *testing.T) {
+	requireTool(t, "osv-scanner")
 	dir := fixtureDir(t)
 	lockfile := filepath.Join(dir, "package-lock.json")
 	outcome := OSVScanner(context.Background(), lockfile)
@@ -96,6 +108,7 @@ func TestOSVScanner_RealProcess_FindsVulnerableLockfile(t *testing.T) {
 }
 
 func TestGitleaks_RealProcess_CleanDirectoryReportsOK(t *testing.T) {
+	requireTool(t, "gitleaks")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "clean.txt"), []byte("nothing sensitive here\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -142,9 +155,7 @@ func TestOSVScanner_RealProcess_HungProcessKilledByTimeout(t *testing.T) {
 //
 // This drives the real adapter, with a real process, killed by a real deadline.
 func TestGitleaks_TimedOutRunIsNeverReportedAsAPass(t *testing.T) {
-	if _, err := exec.LookPath("gitleaks"); err != nil {
-		t.Skip("gitleaks is not installed; this test needs the real binary to be killed mid-run")
-	}
+	requireTool(t, "gitleaks")
 
 	// A deadline short enough that the process cannot finish, applied to the
 	// real adapter rather than to a stand-in.
