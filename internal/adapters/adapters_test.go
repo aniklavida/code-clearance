@@ -266,3 +266,302 @@ func TestFinding_FullEvidenceBundle(t *testing.T) {
 		t.Fatal("finding missing RawArtifact reference in evidence bundle")
 	}
 }
+
+func TestDetectToolVersion_RealInstalledTools(t *testing.T) {
+	for _, tool := range []string{"gitleaks", "osv-scanner"} {
+		requireTool(t, tool)
+		ver, err := DetectToolVersion(context.Background(), tool)
+		if err != nil {
+			t.Fatalf("DetectToolVersion(%s) failed: %v", tool, err)
+		}
+		if !strings.HasPrefix(ver, "v") {
+			t.Fatalf("expected version prefix 'v', got %s", ver)
+		}
+		if err := normalize.ValidateToolVersion(tool, ver); err != nil {
+			t.Fatalf("detected version %s failed validation for %s: %v", ver, tool, err)
+		}
+		t.Logf("detected %s version: %s", tool, ver)
+	}
+}
+
+func TestParseVersionOutput(t *testing.T) {
+	testCases := []struct {
+		tool   string
+		output string
+		want   string
+	}{
+		{"gitleaks", "8.30.1\n", "v8.30.1"},
+		{"gitleaks", "v8.18.0\n", "v8.18.0"},
+		{"osv-scanner", "osv-scanner version: 2.5.1\nosv-scalibr version: 0.5.2\n", "v2.5.1"},
+		{"osv-scanner", "osv-scanner version: 1.8.2\n", "v1.8.2"},
+		{"semgrep", "1.90.0\n", "v1.90.0"},
+		{"semgrep", "v1.85.0\n", "v1.85.0"},
+		{"trivy", "Version: 0.58.0\nVulnerability DB:\n", "v0.58.0"},
+	}
+
+	for _, tc := range testCases {
+		got, err := parseVersionOutput(tc.tool, tc.output)
+		if err != nil {
+			t.Fatalf("parseVersionOutput(%s) returned error: %v", tc.tool, err)
+		}
+		if got != tc.want {
+			t.Fatalf("parseVersionOutput(%s) = %s, want %s", tc.tool, got, tc.want)
+		}
+	}
+}
+
+func TestAdapters_UnsupportedVersionProducesNamedError(t *testing.T) {
+	ctx := context.Background()
+	testCases := []struct {
+		adapter Adapter
+		unsupp  string
+	}{
+		{func() Adapter { a := NewGitleaksAdapter(); a.SetVersion("v7.0.0"); return a }(), "v7.0.0"},
+		{func() Adapter { a := NewOSVScannerAdapter(); a.SetVersion("v3.0.0"); return a }(), "v3.0.0"},
+		{func() Adapter { a := NewSemgrepAdapter(); a.SetVersion("v2.0.0"); return a }(), "v2.0.0"},
+		{func() Adapter { a := NewTrivyAdapter(); a.SetVersion("v1.0.0"); return a }(), "v1.0.0"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.adapter.Name()+"_"+tc.unsupp, func(t *testing.T) {
+			avail := tc.adapter.Availability(ctx)
+			if !avail.Available {
+				t.Skipf("%s is not installed on PATH", tc.adapter.Name())
+			}
+			outcome := tc.adapter.Run(ctx, ".")
+			if outcome.Status != evidence.StatusUnavailable {
+				t.Fatalf("%s with unsupported version %s returned status %s, want %s",
+					tc.adapter.Name(), tc.unsupp, outcome.Status, evidence.StatusUnavailable)
+			}
+			if outcome.ExitCode != -1 {
+				t.Fatalf("exit code = %d, want -1", outcome.ExitCode)
+			}
+			if !strings.Contains(outcome.StderrTail, tc.adapter.Name()) || !strings.Contains(outcome.StderrTail, tc.unsupp) {
+				t.Fatalf("stderr %q must name both tool %s and version %s",
+					outcome.StderrTail, tc.adapter.Name(), tc.unsupp)
+			}
+		})
+	}
+}
+
+func TestAdapters_MissingOptionalToolProducesNotInstalledNeverPass(t *testing.T) {
+	ctx := context.Background()
+
+	for _, name := range []string{"semgrep", "trivy"} {
+		if _, err := exec.LookPath(name); err == nil {
+			t.Skipf("%s is installed; this test verifies missing tool behavior", name)
+		}
+	}
+
+	s := NewSemgrepAdapter()
+	outcomeS := s.Run(ctx, ".")
+	if outcomeS.Status == evidence.StatusOK {
+		t.Fatal("missing semgrep produced StatusOK; missing optional tool must never appear as a pass")
+	}
+	if outcomeS.Status != evidence.StatusNotInstalled {
+		t.Fatalf("semgrep status = %s, want %s", outcomeS.Status, evidence.StatusNotInstalled)
+	}
+	if outcomeS.ExitCode != -1 {
+		t.Fatalf("semgrep exit code = %d, want -1", outcomeS.ExitCode)
+	}
+
+	tr := NewTrivyAdapter()
+	outcomeT := tr.Run(ctx, ".")
+	if outcomeT.Status == evidence.StatusOK {
+		t.Fatal("missing trivy produced StatusOK; missing optional tool must never appear as a pass")
+	}
+	if outcomeT.Status != evidence.StatusNotInstalled {
+		t.Fatalf("trivy status = %s, want %s", outcomeT.Status, evidence.StatusNotInstalled)
+	}
+	if outcomeT.ExitCode != -1 {
+		t.Fatalf("trivy exit code = %d, want -1", outcomeT.ExitCode)
+	}
+}
+
+func TestAdapters_RawOutputRetainedInStoreAndReferencedInFindings(t *testing.T) {
+	requireTool(t, "gitleaks")
+
+	dir := secretFixtureDir(t)
+	engine := app.NewEngine(func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		return []evidence.RunOutcome{Gitleaks(ctx, targetDir)}
+	})
+
+	report, err := engine.Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("engine.Scan: %v", err)
+	}
+
+	if len(report.Runs) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(report.Runs))
+	}
+	run := report.Runs[0]
+	if run.RawArtifact == nil || run.RawArtifact.URI == "" {
+		t.Fatal("run.RawArtifact URI must be populated")
+	}
+
+	// Verify raw artifact file actually exists on disk in the artifact store
+	data, err := os.ReadFile(run.RawArtifact.URI)
+	if err != nil {
+		t.Fatalf("failed to read raw artifact from store: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatal("raw artifact file in store is empty")
+	}
+	if !strings.Contains(string(data), `"runs"`) && !strings.Contains(string(data), `"version"`) {
+		t.Fatalf("raw artifact content is not SARIF: %s", string(data)[:min(len(data), 100)])
+	}
+
+	// Verify findings reference this exact raw artifact
+	if len(report.Findings) == 0 {
+		t.Fatal("expected findings for secret fixture")
+	}
+	for i, f := range report.Findings {
+		if f.RawArtifact.URI != run.RawArtifact.URI {
+			t.Fatalf("finding %d RawArtifact URI %q != run RawArtifact URI %q",
+				i, f.RawArtifact.URI, run.RawArtifact.URI)
+		}
+		if f.RawArtifact.Format != "sarif" {
+			t.Fatalf("finding %d RawArtifact format = %q, want sarif", i, f.RawArtifact.Format)
+		}
+		if f.Command == "" {
+			t.Fatalf("finding %d missing Command", i)
+		}
+	}
+}
+
+func TestOSVScanner_RawOutputRetainedInStoreAndReferencedInFindings(t *testing.T) {
+	requireTool(t, "osv-scanner")
+
+	dir := fixtureDir(t)
+	lockfile := filepath.Join(dir, "package-lock.json")
+
+	engine := app.NewEngine(func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		return []evidence.RunOutcome{OSVScanner(ctx, lockfile)}
+	})
+
+	report, err := engine.Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("engine.Scan: %v", err)
+	}
+
+	if len(report.Runs) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(report.Runs))
+	}
+	run := report.Runs[0]
+	if run.RawArtifact == nil || run.RawArtifact.URI == "" {
+		t.Fatal("run.RawArtifact URI must be populated")
+	}
+
+	data, err := os.ReadFile(run.RawArtifact.URI)
+	if err != nil {
+		t.Fatalf("failed to read raw artifact from store: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatal("raw artifact file in store is empty")
+	}
+
+	if len(report.Findings) == 0 {
+		t.Fatal("expected findings for vulnerable lockfile")
+	}
+	for i, f := range report.Findings {
+		if f.RawArtifact.URI != run.RawArtifact.URI {
+			t.Fatalf("finding %d RawArtifact URI %q != run RawArtifact URI %q",
+				i, f.RawArtifact.URI, run.RawArtifact.URI)
+		}
+		if f.Command == "" {
+			t.Fatalf("finding %d missing Command", i)
+		}
+	}
+}
+
+func TestAdapters_ArgumentArraysNeverShellStrings(t *testing.T) {
+	maliciousTarget := "test-repo; rm -rf /; echo pwned"
+
+	for _, a := range DefaultAdapters() {
+		t.Run(a.Name(), func(t *testing.T) {
+			cmd := a.Command(maliciousTarget)
+			if len(cmd) < 2 {
+				t.Fatalf("%s command slice too short: %v", a.Name(), cmd)
+			}
+
+			foundTarget := false
+			for _, arg := range cmd {
+				if arg == maliciousTarget {
+					foundTarget = true
+				}
+				if strings.Contains(arg, "/bin/sh") || strings.Contains(arg, "sh -c") || strings.Contains(arg, "cmd.exe") {
+					t.Fatalf("%s uses shell wrapper: %v", a.Name(), cmd)
+				}
+			}
+			if !foundTarget {
+				t.Fatalf("%s did not preserve malicious target as a single argument element: %v", a.Name(), cmd)
+			}
+		})
+	}
+}
+
+func TestSemgrep_RealProcess_FindsFixtureFindings(t *testing.T) {
+	requireTool(t, "semgrep")
+	dir := fixtureDir(t)
+	outcome := Semgrep(context.Background(), dir)
+	if outcome.Status != evidence.StatusOK && outcome.Status != evidence.StatusFindings {
+		t.Fatalf("semgrep status = %s, want ok or ok-findings", outcome.Status)
+	}
+}
+
+func TestTrivy_RealProcess_FindsFixtureFindings(t *testing.T) {
+	requireTool(t, "trivy")
+	dir := fixtureDir(t)
+	outcome := Trivy(context.Background(), dir)
+	if outcome.Status != evidence.StatusOK && outcome.Status != evidence.StatusFindings {
+		t.Fatalf("trivy status = %s, want ok or ok-findings", outcome.Status)
+	}
+}
+
+func TestAdapters_CrashingAdapterDoesNotCorruptOtherResults(t *testing.T) {
+	requireTool(t, "gitleaks")
+
+	dir := secretFixtureDir(t)
+
+	panickingAdapter := func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		panic("boom: intentional adapter crash")
+	}
+
+	normalAdapter := func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		return []evidence.RunOutcome{Gitleaks(ctx, targetDir)}
+	}
+
+	engine := app.NewEngine(panickingAdapter, normalAdapter)
+	report, err := engine.Scan(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("engine.Scan failed: %v", err)
+	}
+
+	if len(report.Runs) != 2 {
+		t.Fatalf("expected 2 runs, got %d", len(report.Runs))
+	}
+
+	var crashedRun, okRun *evidence.RunOutcome
+	for i := range report.Runs {
+		if report.Runs[i].Status == evidence.StatusCrashed {
+			crashedRun = &report.Runs[i]
+		}
+		if report.Runs[i].Status == evidence.StatusFindings {
+			okRun = &report.Runs[i]
+		}
+	}
+
+	if crashedRun == nil {
+		t.Fatal("expected panicking adapter to produce StatusCrashed")
+	}
+	if !strings.Contains(crashedRun.StderrTail, "panic") {
+		t.Fatalf("crashed run stderr %q does not mention panic", crashedRun.StderrTail)
+	}
+
+	for _, f := range okRun.Findings {
+		t.Logf("finding: %s %s %v", f.RuleID, f.Message, f.Locations)
+	}
+	if len(okRun.Findings) == 0 {
+		t.Fatal("expected findings from normal adapter")
+	}
+}

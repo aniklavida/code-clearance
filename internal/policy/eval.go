@@ -337,6 +337,9 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 func ApplyVerdict(cfg Config, rep *evidence.Report) {
 	v := Evaluate(cfg, *rep)
 	rep.Outcome = v.Outcome
+	// The reason was computed and then discarded, so a report could say
+	// "incomplete" without naming the requirement that made it so.
+	rep.Reason = v.Reason
 	rep.ResidualRisk = v.ResidualRisk
 	rep.Uncovered = v.Uncovered
 }
