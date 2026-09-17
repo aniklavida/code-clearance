@@ -2,6 +2,12 @@
 // that Code Clearance ingests SARIF and scanner outputs into.
 package evidence
 
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
 // ClearanceOutcome represents the overall policy verdict of a clearance run.
 type ClearanceOutcome string
 
@@ -323,4 +329,114 @@ func (r Report) Dirty() bool {
 // Fingerprint returns the deterministic fingerprint of the working tree.
 func (r Report) Fingerprint() string {
 	return r.Target.Fingerprint
+}
+
+// ToolsForFinding returns all tools that detected or correlated into the finding
+// identified by findingID. It checks the top-level report findings as well as
+// raw run outcomes, returning a sorted list of unique tool names.
+func (r Report) ToolsForFinding(findingID string) []string {
+	seen := make(map[string]bool)
+	var tools []string
+
+	addTool := func(tool string) {
+		for _, part := range strings.Split(tool, ",") {
+			t := strings.TrimSpace(part)
+			if t != "" && !seen[t] {
+				seen[t] = true
+				tools = append(tools, t)
+			}
+		}
+	}
+
+	// 1. Check top-level findings
+	for _, f := range r.Findings {
+		if f.ID == findingID || containsString(f.DuplicateFindingIDs, findingID) || containsString(f.RelatedFindingIDs, findingID) {
+			addTool(f.Tool)
+			if f.Reviewer.Identity != "" && f.Reviewer.Type == ReviewerTool {
+				addTool(f.Reviewer.Identity)
+			}
+		}
+	}
+
+	// 2. Check run outcomes
+	for _, run := range r.Runs {
+		for _, f := range run.Findings {
+			if f.ID == findingID || containsString(f.DuplicateFindingIDs, findingID) || containsString(f.RelatedFindingIDs, findingID) {
+				if run.Tool != "" {
+					addTool(run.Tool)
+				}
+				addTool(f.Tool)
+			}
+		}
+	}
+
+	sort.Strings(tools)
+	return tools
+}
+
+// SourceRecordsForFinding returns all constituent raw finding records across all runs
+// that correspond to the given findingID (either matching its ID, or listed in duplicate/related IDs).
+func (r Report) SourceRecordsForFinding(findingID string) []Finding {
+	var records []Finding
+	seen := make(map[string]bool)
+
+	// Collect matching finding IDs
+	targetIDs := map[string]bool{findingID: true}
+	for _, f := range r.Findings {
+		if f.ID == findingID {
+			for _, id := range f.DuplicateFindingIDs {
+				targetIDs[id] = true
+			}
+			for _, id := range f.RelatedFindingIDs {
+				targetIDs[id] = true
+			}
+		}
+	}
+
+	for _, run := range r.Runs {
+		for _, f := range run.Findings {
+			isMatch := targetIDs[f.ID]
+			if !isMatch {
+				for _, id := range f.DuplicateFindingIDs {
+					if targetIDs[id] {
+						isMatch = true
+						break
+					}
+				}
+			}
+			if !isMatch {
+				for _, id := range f.RelatedFindingIDs {
+					if targetIDs[id] {
+						isMatch = true
+						break
+					}
+				}
+			}
+
+			if isMatch {
+				key := fmt.Sprintf("%s:%s:%d", f.Tool, f.ID, f.RawIndex)
+				if !seen[key] {
+					seen[key] = true
+					records = append(records, f)
+				}
+			}
+		}
+	}
+
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Tool != records[j].Tool {
+			return records[i].Tool < records[j].Tool
+		}
+		return records[i].ID < records[j].ID
+	})
+	return records
+}
+
+func containsString(slice []string, val string) bool {
+	for _, s := range slice {
+		if s == val {
+			return true
+		}
+	}
+	return false
 }
