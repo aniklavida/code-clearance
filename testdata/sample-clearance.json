@@ -1,0 +1,123 @@
+{
+  "version": "v1",
+  "adapters": {
+    "required": [
+      "gitleaks",
+      "osv-scanner"
+    ],
+    "optional": [
+      "semgrep",
+      "trivy"
+    ]
+  },
+  "paths": {
+    "include": [
+      "**/*"
+    ],
+    "exclude": [
+      ".git/**",
+      "vendor/**",
+      "node_modules/**"
+    ]
+  },
+  "scopes": {
+    "quick": {
+      "adapters": [
+        "gitleaks",
+        "osv-scanner"
+      ],
+      "commands": [
+        "test"
+      ],
+      "allow_dirty": true
+    },
+    "full": {
+      "adapters": [
+        "gitleaks",
+        "osv-scanner",
+        "semgrep"
+      ],
+      "commands": [
+        "build",
+        "test",
+        "lint"
+      ],
+      "allow_dirty": false
+    },
+    "release": {
+      "adapters": [
+        "gitleaks",
+        "osv-scanner",
+        "semgrep",
+        "trivy"
+      ],
+      "commands": [
+        "build",
+        "test",
+        "lint"
+      ],
+      "allow_dirty": false
+    }
+  },
+  "policy": {
+    "blocking_severities": [
+      "critical",
+      "high"
+    ],
+    "allow_dirty": false,
+    "accepted_risks": [
+      {
+        "finding_id": "e3b0c44298fc1c14",
+        "rule_id": "GHSA-p6mc-m468-83gw",
+        "tool": "osv-scanner",
+        "reason": "Scheduled for remediation in upcoming dependency upgrade cycle",
+        "expires_at": "2026-12-31T23:59:59Z",
+        "owner": "security-team"
+      }
+    ]
+  },
+  "commands": {
+    "required": [
+      {
+        "name": "build",
+        "run": "go build ./...",
+        "timeout_seconds": 60
+      },
+      {
+        "name": "test",
+        "run": "go test ./...",
+        "timeout_seconds": 120
+      }
+    ],
+    "optional": [
+      {
+        "name": "lint",
+        "run": "golangci-lint run",
+        "timeout_seconds": 60
+      }
+    ]
+  },
+  "limits": {
+    "timeout_seconds": 300,
+    "max_concurrency": 4
+  },
+  "outcomes": {
+    "minimum_evidence": {
+      "cleared": {
+        "required_adapters_must_pass": true,
+        "zero_blocking_findings": true,
+        "clean_tree_required": true
+      },
+      "cleared_with_residual_risk": {
+        "accepted_risks_unexpired": true
+      },
+      "blocked": {
+        "blocking_finding_present": true
+      },
+      "incomplete": {
+        "missing_required_adapter": true,
+        "crashed_or_timed_out": true
+      }
+    }
+  }
+}
