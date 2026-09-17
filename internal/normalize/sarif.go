@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aniklavida/code-clearance/internal/correlate"
 	"github.com/aniklavida/code-clearance/internal/evidence"
 )
 
@@ -173,7 +174,7 @@ func TrivySeverity(_ string, result Result, _ map[string]Rule) evidence.Severity
 // normalization.
 func Normalize(toolName, toolVersion string, log *Log, sev SeverityRule) []evidence.Finding {
 	var out []evidence.Finding
-	seen := map[string]bool{}
+	seen := map[string]int{}
 
 	for _, run := range log.Runs {
 		ruleByID := map[string]Rule{}
@@ -278,12 +279,14 @@ func Normalize(toolName, toolVersion string, log *Log, sev SeverityRule) []evide
 
 			RedactFinding(&f)
 
-			f.ID = fingerprint(f)
+			f.ID = correlate.Fingerprint(f)
 			f.Fingerprint = f.ID
-			if seen[f.ID] {
-				continue // exact duplicate within this run; keep the first
+			if idx, ok := seen[f.ID]; ok {
+				out[idx].DuplicateFindingIDs = append(out[idx].DuplicateFindingIDs, f.ID)
+				out[idx].RelatedFindingIDs = append(out[idx].RelatedFindingIDs, f.ID)
+				continue // duplicate within this run; keep the first but record duplicate link
 			}
-			seen[f.ID] = true
+			seen[f.ID] = len(out)
 			out = append(out, f)
 		}
 	}
@@ -291,20 +294,9 @@ func Normalize(toolName, toolVersion string, log *Log, sev SeverityRule) []evide
 }
 
 // fingerprint derives a stable ID from fields that identify "the same
-// finding" independent of RawIndex or tool-internal ordering: tool, rule,
-// primary location and message. Two byte-identical SARIF results collapse
-// to the same fingerprint by design.
+// finding" independent of RawIndex or tool-internal ordering.
 func fingerprint(f evidence.Finding) string {
-	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00", f.Tool, f.RuleID, f.Message)
-	for _, loc := range f.Locations {
-		fmt.Fprintf(h, "%s\x00", loc.URI)
-		if loc.StartLine != nil {
-			fmt.Fprintf(h, "%d\x00", *loc.StartLine)
-		}
-	}
-	sum := h.Sum(nil)
-	return strings.ToLower(hex.EncodeToString(sum))[:16]
+	return correlate.Fingerprint(f)
 }
 
 // SarifLevel maps normalized severity to SARIF 2.1.0 level strings.
@@ -342,25 +334,29 @@ func Export(report evidence.Report) (*Log, error) {
 		findingsByTool[toolName] = append(findingsByTool[toolName], run.Findings...)
 	}
 
-	// Also account for top-level findings if any weren't captured in runs
-	for _, f := range report.Findings {
-		toolName := f.Tool
-		if toolName == "" {
-			toolName = "code-clearance"
-		}
-		if _, ok := versionByTool[toolName]; !ok {
-			versionByTool[toolName] = f.ToolVersion
-		}
-		// Check if already in findingsByTool
-		alreadyPresent := false
-		for _, existing := range findingsByTool[toolName] {
-			if existing.ID == f.ID {
-				alreadyPresent = true
-				break
+	// If runs were not populated, group top-level findings by primary tool
+	if len(report.Runs) == 0 {
+		for _, f := range report.Findings {
+			toolName := f.Tool
+			if strings.Contains(toolName, ",") {
+				toolName = strings.TrimSpace(strings.Split(toolName, ",")[0])
 			}
-		}
-		if !alreadyPresent {
-			findingsByTool[toolName] = append(findingsByTool[toolName], f)
+			if toolName == "" {
+				toolName = "code-clearance"
+			}
+			if _, ok := versionByTool[toolName]; !ok {
+				versionByTool[toolName] = f.ToolVersion
+			}
+			alreadyPresent := false
+			for _, existing := range findingsByTool[toolName] {
+				if existing.ID == f.ID {
+					alreadyPresent = true
+					break
+				}
+			}
+			if !alreadyPresent {
+				findingsByTool[toolName] = append(findingsByTool[toolName], f)
+			}
 		}
 	}
 

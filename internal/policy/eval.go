@@ -188,18 +188,21 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	var allFindings []evidence.Finding
 	seenFindings := make(map[string]bool)
 
-	for _, r := range runs {
-		for _, f := range r.Findings {
+	if len(rep.Findings) > 0 {
+		for _, f := range rep.Findings {
 			if !seenFindings[f.ID] {
 				seenFindings[f.ID] = true
 				allFindings = append(allFindings, f)
 			}
 		}
-	}
-	for _, f := range rep.Findings {
-		if !seenFindings[f.ID] {
-			seenFindings[f.ID] = true
-			allFindings = append(allFindings, f)
+	} else {
+		for _, r := range runs {
+			for _, f := range r.Findings {
+				if !seenFindings[f.ID] {
+					seenFindings[f.ID] = true
+					allFindings = append(allFindings, f)
+				}
+			}
 		}
 	}
 
@@ -245,7 +248,25 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 			acceptedRule = &ar
 		} else if ar, ok := acceptedByRuleID[f.RuleID]; ok {
 			acceptedRule = &ar
-		} else if f.ChallengeStatus == evidence.ChallengeAcceptedRisk {
+		} else {
+			// Check if any duplicate or related finding ID was accepted
+			for _, dupID := range f.DuplicateFindingIDs {
+				if ar, ok := acceptedByFindingID[dupID]; ok {
+					acceptedRule = &ar
+					break
+				}
+			}
+			if acceptedRule == nil {
+				for _, relID := range f.RelatedFindingIDs {
+					if ar, ok := acceptedByFindingID[relID]; ok {
+						acceptedRule = &ar
+						break
+					}
+				}
+			}
+		}
+
+		if acceptedRule == nil && f.ChallengeStatus == evidence.ChallengeAcceptedRisk {
 			// Finding was flagged as accepted risk without a specific config entry
 			rule := AcceptedRiskRule{
 				FindingID: f.ID,

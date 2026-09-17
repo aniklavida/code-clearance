@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aniklavida/code-clearance/internal/correlate"
 	"github.com/aniklavida/code-clearance/internal/evidence"
 	"github.com/aniklavida/code-clearance/internal/policy"
 	"github.com/aniklavida/code-clearance/internal/store"
@@ -255,7 +256,10 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 		},
 	}
 
-	// 5. Apply deterministic policy verdict
+	// 5. Correlate and deduplicate findings across runs
+	correlate.CorrelateReport(&report)
+
+	// 6. Apply deterministic policy verdict
 	if e != defaultEngine && len(adapters) > 0 {
 		var reqs []string
 		for _, r := range runs {
