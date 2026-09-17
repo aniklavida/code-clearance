@@ -226,6 +226,7 @@ type RunOutcome struct {
 	Findings    []Finding          `json:"findings"`
 	StderrTail  string             `json:"stderr_tail,omitempty"`
 	RawArtifact *ArtifactReference `json:"raw_artifact,omitempty"`
+	RawData     []byte             `json:"-"`
 }
 
 type RunStatus string

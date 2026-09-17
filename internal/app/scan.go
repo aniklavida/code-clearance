@@ -188,14 +188,21 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	for _, outcomes := range taskResults {
 		for _, o := range outcomes {
 			// Persist raw artifact if not already saved to this session
-			if o.RawArtifact != nil && o.RawArtifact.URI != "" {
-				// Read artifact data and store into session
-				data, readErr := os.ReadFile(o.RawArtifact.URI)
-				if readErr == nil && len(data) > 0 {
-					ref, saveErr := session.SaveArtifact(o.Tool, o.RawArtifact.Format, data)
-					if saveErr == nil {
-						o.RawArtifact = &ref
-					}
+			var rawBytes []byte
+			if len(o.RawData) > 0 {
+				rawBytes = o.RawData
+			} else if o.RawArtifact != nil && o.RawArtifact.URI != "" {
+				rawBytes, _ = os.ReadFile(o.RawArtifact.URI)
+			}
+
+			if len(rawBytes) > 0 {
+				format := "raw"
+				if o.RawArtifact != nil && o.RawArtifact.Format != "" {
+					format = o.RawArtifact.Format
+				}
+				ref, saveErr := session.SaveArtifact(o.Tool, format, rawBytes)
+				if saveErr == nil {
+					o.RawArtifact = &ref
 				}
 			} else {
 				// Save diagnostic output as raw artifact
@@ -219,7 +226,7 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 			}
 
 			runs = append(runs, o)
-			if o.Tool != "" {
+			if o.Tool != "" && o.Status != evidence.StatusNotInstalled && o.Status != evidence.StatusSkipped {
 				adaptersRan = append(adaptersRan, o.Tool)
 			}
 			allFindings = append(allFindings, o.Findings...)
