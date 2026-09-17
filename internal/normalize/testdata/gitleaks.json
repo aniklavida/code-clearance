@@ -1,0 +1,26 @@
+[
+  {
+    "Description": "Slack Bot Token",
+    "StartLine": 4,
+    "EndLine": 4,
+    "StartColumn": 1,
+    "EndColumn": 60,
+    "Match": "[REDACTED CREDENTIAL — matched here]",
+    "Secret": "[REDACTED CREDENTIAL — matched here]",
+    "File": "testdata/fixture-repo/config.py",
+    "RuleID": "slack-bot-token",
+    "Entropy": 3.8
+  },
+  {
+    "Description": "Stripe Access Token",
+    "StartLine": 5,
+    "EndLine": 5,
+    "StartColumn": 1,
+    "EndColumn": 60,
+    "Match": "[REDACTED CREDENTIAL — matched here]",
+    "Secret": "[REDACTED CREDENTIAL — matched here]",
+    "File": "testdata/fixture-repo/config.py",
+    "RuleID": "stripe-access-token",
+    "Entropy": 4.1
+  }
+]

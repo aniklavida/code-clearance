@@ -75,10 +75,14 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 				ExitCode: &r.ExitCode,
 			})
 		case evidence.StatusNotInstalled, evidence.StatusUnavailable:
+			reason := "scanner executable missing or unavailable"
+			if r.StderrTail != "" {
+				reason = r.StderrTail
+			}
 			verdict.Uncovered.Unavailable = append(verdict.Uncovered.Unavailable, evidence.UncoveredCheck{
 				Tool:     r.Tool,
 				Command:  r.Command,
-				Reason:   "scanner executable missing or unavailable",
+				Reason:   reason,
 				ExitCode: &r.ExitCode,
 			})
 		}

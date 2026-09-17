@@ -2,8 +2,10 @@ package mcpserver_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aniklavida/code-clearance/internal/app"
@@ -79,5 +81,50 @@ func TestServer_RegistersClearanceTool(t *testing.T) {
 	server := mcpserver.NewServer()
 	if server == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestMCPServer_RedactsSecretsInAgentPayload(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	// Assemble secret fragments at runtime so no credential literal exists in repo
+	slackSecret := "xoxb-" + "778450471234-" + "7784504712345-" + "ZnJ0aGVzY2FubmVyb25seQ"
+	stripeSecret := "sk_" + "live_" + "51H8x9K2eZvKYlo2CkQ7tNGGyRfTeStFiXtUrEsAbCdEfGh"
+
+	configContent := "SLACK_TOKEN = \"" + slackSecret + "\"\n" +
+		"STRIPE_KEY = \"" + stripeSecret + "\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "secrets.py"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Invoke the MCP tool handler directly
+	args := mcpserver.ScanArgs{TargetDir: dir, Scope: "full"}
+	_, scanOutput, err := mcpserver.RunClearanceScan(ctx, nil, args)
+	if err != nil {
+		t.Fatalf("RunClearanceScan: %v", err)
+	}
+
+	// 2. Serialize agent payload
+	payloadBytes, err := json.Marshal(scanOutput)
+	if err != nil {
+		t.Fatalf("json.Marshal(scanOutput): %v", err)
+	}
+	payloadStr := string(payloadBytes)
+
+	// Assert secret is NEVER exposed in the agent-facing payload
+	if strings.Contains(payloadStr, slackSecret) {
+		t.Fatal("SECURITY LEAK: agent payload contains unredacted slackSecret!")
+	}
+	if strings.Contains(payloadStr, stripeSecret) {
+		t.Fatal("SECURITY LEAK: agent payload contains unredacted stripeSecret!")
+	}
+
+	for _, f := range scanOutput.Findings {
+		fBytes, _ := json.Marshal(f)
+		fStr := string(fBytes)
+		if strings.Contains(fStr, slackSecret) || strings.Contains(fStr, stripeSecret) {
+			t.Fatalf("SECURITY LEAK: finding %s contains unredacted secret!", f.ID)
+		}
 	}
 }

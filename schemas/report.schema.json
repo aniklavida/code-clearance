@@ -196,6 +196,7 @@
         "fingerprint": { "type": "string" },
         "tool": { "type": "string" },
         "tool_version": { "type": "string" },
+        "command": { "type": "string" },
         "rule_id": { "type": "string" },
         "native_severity": { "type": "string" },
         "normalized_severity": {

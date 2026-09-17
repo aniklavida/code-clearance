@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "trivy",
+          "semanticVersion": "v0.58.0",
+          "informationUri": "https://github.com/aquasecurity/trivy",
+          "rules": [
+            {
+              "id": "CVE-2020-8203",
+              "shortDescription": {
+                "text": "Prototype pollution in lodash prior to 4.17.19"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CVE-2020-8203",
+          "level": "error",
+          "message": {
+            "text": "lodash: prototype pollution vulnerability in lodash prior to 4.17.19"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "package-lock.json"
+                },
+                "region": {
+                  "startLine": 42,
+                  "startColumn": 1,
+                  "endLine": 42,
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "\"lodash\": \"4.17.15\""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

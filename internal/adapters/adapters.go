@@ -21,10 +21,12 @@ import (
 // DefaultTimeout bounds a single adapter invocation.
 const DefaultTimeout = 20 * time.Second
 
-// Ensure GitleaksAdapter and OSVScannerAdapter satisfy the Adapter interface at compile time.
+// Ensure all adapters satisfy the Adapter interface at compile time.
 var (
 	_ Adapter = (*GitleaksAdapter)(nil)
 	_ Adapter = (*OSVScannerAdapter)(nil)
+	_ Adapter = (*SemgrepAdapter)(nil)
+	_ Adapter = (*TrivyAdapter)(nil)
 )
 
 // GitleaksAdapter implements Adapter for the Gitleaks secrets scanner.
@@ -113,6 +115,17 @@ func (a *GitleaksAdapter) Run(ctx context.Context, targetDir string) evidence.Ru
 			ExitCode:    -1,
 			Status:      evidence.StatusNotInstalled,
 			StderrTail:  avail.Reason,
+		}
+	}
+
+	if err := normalize.ValidateToolVersion(a.Name(), a.Version()); err != nil {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusUnavailable,
+			StderrTail:  err.Error(),
 		}
 	}
 
@@ -240,6 +253,17 @@ func (a *OSVScannerAdapter) Run(ctx context.Context, lockfilePath string) eviden
 		}
 	}
 
+	if err := normalize.ValidateToolVersion(a.Name(), a.Version()); err != nil {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusUnavailable,
+			StderrTail:  err.Error(),
+		}
+	}
+
 	res := app.Run(ctx, app.Spec{
 		Name:    a.Name(),
 		Command: "osv-scanner",
@@ -274,12 +298,18 @@ func (a *OSVScannerAdapter) Run(ctx context.Context, lockfilePath string) eviden
 
 	log, err := normalize.Parse(res.Stdout)
 	if err != nil {
-		outcome.Status = evidence.StatusCrashed
+		outcome.Status = evidence.StatusUnavailable
 		outcome.StderrTail = outcome.StderrTail + "\nsarif parse error: " + err.Error()
 		return outcome
 	}
 
 	outcome.Findings = normalize.Normalize(a.Name(), a.Version(), log, normalize.OSVScannerSeverity)
+	for idx := range outcome.Findings {
+		if outcome.Findings[idx].Command == "" {
+			outcome.Findings[idx].Command = cmdStr
+		}
+	}
+
 	outcome.RawArtifact = &evidence.ArtifactReference{
 		URI:    fmt.Sprintf("sarif://%s/stdout", a.Name()),
 		Format: "sarif",
@@ -328,17 +358,23 @@ func finishFromSarifFile(tool, version, sarifPath string, res app.Result, sev no
 
 	data, err := readFile(sarifPath)
 	if err != nil {
-		outcome.Status = evidence.StatusCrashed
+		outcome.Status = evidence.StatusUnavailable
 		outcome.StderrTail = outcome.StderrTail + "\nsarif read error: " + err.Error()
 		return outcome
 	}
 	log, err := normalize.Parse(data)
 	if err != nil {
-		outcome.Status = evidence.StatusCrashed
+		outcome.Status = evidence.StatusUnavailable
 		outcome.StderrTail = outcome.StderrTail + "\nsarif parse error: " + err.Error()
 		return outcome
 	}
 	outcome.Findings = normalize.Normalize(tool, version, log, sev)
+	for idx := range outcome.Findings {
+		if outcome.Findings[idx].Command == "" {
+			outcome.Findings[idx].Command = outcome.Command
+		}
+	}
+
 	outcome.RawArtifact = &evidence.ArtifactReference{
 		URI:    sarifPath,
 		Format: "sarif",
@@ -351,6 +387,326 @@ func finishFromSarifFile(tool, version, sarifPath string, res app.Result, sev no
 		outcome.Status = evidence.StatusFindings
 	}
 	return outcome
+}
+
+// SemgrepAdapter implements Adapter for the Semgrep Community Edition SAST scanner.
+type SemgrepAdapter struct {
+	version string
+}
+
+// NewSemgrepAdapter constructs a new Semgrep adapter instance.
+func NewSemgrepAdapter() *SemgrepAdapter {
+	return &SemgrepAdapter{version: "v1.90.0"}
+}
+
+func (a *SemgrepAdapter) Name() string {
+	return "semgrep"
+}
+
+func (a *SemgrepAdapter) Capability() Capability {
+	return CapabilitySAST
+}
+
+func (a *SemgrepAdapter) Version() string {
+	return a.version
+}
+
+func (a *SemgrepAdapter) InputScope() InputScope {
+	return ScopeRepository
+}
+
+func (a *SemgrepAdapter) ExitSemantics() ExitSemantics {
+	return ExitSemantics{
+		SuccessExitCodes:  []int{0},
+		FindingsExitCodes: []int{1},
+	}
+}
+
+func (a *SemgrepAdapter) Availability(ctx context.Context) Availability {
+	path, err := exec.LookPath("semgrep")
+	if err != nil {
+		return Availability{
+			Available: false,
+			Reason:    "semgrep executable missing on PATH",
+		}
+	}
+	return Availability{
+		Available: true,
+		Reason:    "semgrep is installed",
+		Path:      path,
+	}
+}
+
+func (a *SemgrepAdapter) Command(target string) []string {
+	return []string{
+		"semgrep",
+		"scan",
+		"--json",
+		"--quiet",
+		target,
+	}
+}
+
+func (a *SemgrepAdapter) Descriptor(ctx context.Context, target string) Descriptor {
+	return Descriptor{
+		Name:          a.Name(),
+		Capability:    a.Capability(),
+		Availability:  a.Availability(ctx),
+		Version:       a.Version(),
+		InputScope:    a.InputScope(),
+		Command:       a.Command(target),
+		ExitSemantics: a.ExitSemantics(),
+	}
+}
+
+func (a *SemgrepAdapter) Run(ctx context.Context, targetDir string) evidence.RunOutcome {
+	avail := a.Availability(ctx)
+	cmdStr := strings.Join(a.Command(targetDir), " ")
+
+	if !avail.Available {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusNotInstalled,
+			StderrTail:  avail.Reason,
+		}
+	}
+
+	if err := normalize.ValidateToolVersion(a.Name(), a.Version()); err != nil {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusUnavailable,
+			StderrTail:  err.Error(),
+		}
+	}
+
+	res := app.Run(ctx, app.Spec{
+		Name:    a.Name(),
+		Command: "semgrep",
+		Args: []string{
+			"scan",
+			"--json",
+			"--quiet",
+			targetDir,
+		},
+		Dir:     targetDir,
+		Timeout: DefaultTimeout,
+	})
+
+	outcome := evidence.RunOutcome{
+		Tool:        a.Name(),
+		ToolVersion: a.Version(),
+		Command:     cmdStr,
+		ExitCode:    res.ExitCode,
+		Duration:    res.Duration.String(),
+		StderrTail:  tail(res.Stderr, 10),
+	}
+
+	switch {
+	case res.Err != nil:
+		outcome.Status = evidence.StatusNotInstalled
+		return outcome
+	case res.TimedOut:
+		outcome.Status = evidence.StatusTimedOut
+		return outcome
+	case res.ExitCode != 0 && res.ExitCode != 1:
+		outcome.Status = evidence.StatusCrashed
+		return outcome
+	}
+
+	findings, err := normalize.Ingest(a.Name(), a.Version(), "json", res.Stdout)
+	if err != nil {
+		outcome.Status = evidence.StatusUnavailable
+		outcome.StderrTail = outcome.StderrTail + "\nsemgrep parse error: " + err.Error()
+		return outcome
+	}
+
+	for idx := range findings {
+		findings[idx].Command = cmdStr
+	}
+
+	outcome.Findings = findings
+	outcome.RawArtifact = &evidence.ArtifactReference{
+		URI:    fmt.Sprintf("json://%s/stdout", a.Name()),
+		Format: "json",
+		Index:  0,
+	}
+
+	if len(findings) > 0 {
+		outcome.Status = evidence.StatusFindings
+	} else {
+		outcome.Status = evidence.StatusOK
+	}
+	return outcome
+}
+
+// TrivyAdapter implements Adapter for the Trivy security scanner.
+type TrivyAdapter struct {
+	version string
+}
+
+// NewTrivyAdapter constructs a new Trivy adapter instance.
+func NewTrivyAdapter() *TrivyAdapter {
+	return &TrivyAdapter{version: "v0.58.0"}
+}
+
+func (a *TrivyAdapter) Name() string {
+	return "trivy"
+}
+
+func (a *TrivyAdapter) Capability() Capability {
+	return CapabilityDependencies
+}
+
+func (a *TrivyAdapter) Version() string {
+	return a.version
+}
+
+func (a *TrivyAdapter) InputScope() InputScope {
+	return ScopeRepository
+}
+
+func (a *TrivyAdapter) ExitSemantics() ExitSemantics {
+	return ExitSemantics{
+		SuccessExitCodes:  []int{0},
+		FindingsExitCodes: []int{1},
+	}
+}
+
+func (a *TrivyAdapter) Availability(ctx context.Context) Availability {
+	path, err := exec.LookPath("trivy")
+	if err != nil {
+		return Availability{
+			Available: false,
+			Reason:    "trivy executable missing on PATH",
+		}
+	}
+	return Availability{
+		Available: true,
+		Reason:    "trivy is installed",
+		Path:      path,
+	}
+}
+
+func (a *TrivyAdapter) Command(target string) []string {
+	return []string{
+		"trivy",
+		"fs",
+		"-f", "json",
+		target,
+	}
+}
+
+func (a *TrivyAdapter) Descriptor(ctx context.Context, target string) Descriptor {
+	return Descriptor{
+		Name:          a.Name(),
+		Capability:    a.Capability(),
+		Availability:  a.Availability(ctx),
+		Version:       a.Version(),
+		InputScope:    a.InputScope(),
+		Command:       a.Command(target),
+		ExitSemantics: a.ExitSemantics(),
+	}
+}
+
+func (a *TrivyAdapter) Run(ctx context.Context, targetDir string) evidence.RunOutcome {
+	avail := a.Availability(ctx)
+	cmdStr := strings.Join(a.Command(targetDir), " ")
+
+	if !avail.Available {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusNotInstalled,
+			StderrTail:  avail.Reason,
+		}
+	}
+
+	if err := normalize.ValidateToolVersion(a.Name(), a.Version()); err != nil {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusUnavailable,
+			StderrTail:  err.Error(),
+		}
+	}
+
+	res := app.Run(ctx, app.Spec{
+		Name:    a.Name(),
+		Command: "trivy",
+		Args: []string{
+			"fs",
+			"-f", "json",
+			targetDir,
+		},
+		Dir:     targetDir,
+		Timeout: DefaultTimeout,
+	})
+
+	outcome := evidence.RunOutcome{
+		Tool:        a.Name(),
+		ToolVersion: a.Version(),
+		Command:     cmdStr,
+		ExitCode:    res.ExitCode,
+		Duration:    res.Duration.String(),
+		StderrTail:  tail(res.Stderr, 10),
+	}
+
+	switch {
+	case res.Err != nil:
+		outcome.Status = evidence.StatusNotInstalled
+		return outcome
+	case res.TimedOut:
+		outcome.Status = evidence.StatusTimedOut
+		return outcome
+	case res.ExitCode != 0 && res.ExitCode != 1:
+		outcome.Status = evidence.StatusCrashed
+		return outcome
+	}
+
+	findings, err := normalize.Ingest(a.Name(), a.Version(), "json", res.Stdout)
+	if err != nil {
+		outcome.Status = evidence.StatusUnavailable
+		outcome.StderrTail = outcome.StderrTail + "\ntrivy parse error: " + err.Error()
+		return outcome
+	}
+
+	for idx := range findings {
+		findings[idx].Command = cmdStr
+	}
+
+	outcome.Findings = findings
+	outcome.RawArtifact = &evidence.ArtifactReference{
+		URI:    fmt.Sprintf("json://%s/stdout", a.Name()),
+		Format: "json",
+		Index:  0,
+	}
+
+	if len(findings) > 0 {
+		outcome.Status = evidence.StatusFindings
+	} else {
+		outcome.Status = evidence.StatusOK
+	}
+	return outcome
+}
+
+// Semgrep runs the Semgrep adapter against targetDir.
+func Semgrep(ctx context.Context, targetDir string) evidence.RunOutcome {
+	return NewSemgrepAdapter().Run(ctx, targetDir)
+}
+
+// Trivy runs the Trivy adapter against targetDir.
+func Trivy(ctx context.Context, targetDir string) evidence.RunOutcome {
+	return NewTrivyAdapter().Run(ctx, targetDir)
 }
 
 func readFile(path string) ([]byte, error) {
@@ -370,6 +726,8 @@ func DefaultAdapters() []Adapter {
 	return []Adapter{
 		NewGitleaksAdapter(),
 		NewOSVScannerAdapter(),
+		NewSemgrepAdapter(),
+		NewTrivyAdapter(),
 	}
 }
 
