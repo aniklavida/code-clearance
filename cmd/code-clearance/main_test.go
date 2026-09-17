@@ -53,8 +53,8 @@ func TestCLI_ScanHumanOutput(t *testing.T) {
 	if !strings.Contains(out, "Commit:") {
 		t.Fatalf("expected output to contain 'Commit:', got: %s", out)
 	}
-	if !strings.Contains(out, "Clearance:") {
-		t.Fatalf("expected output to contain 'Clearance:', got: %s", out)
+	if !strings.Contains(out, "Outcome:") {
+		t.Fatalf("expected output to contain 'Outcome:', got: %s", out)
 	}
 }
 
