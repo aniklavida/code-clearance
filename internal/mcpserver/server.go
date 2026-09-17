@@ -19,6 +19,7 @@ import (
 // generic mcp.AddTool derives the JSON schema from these struct tags.
 type ScanArgs struct {
 	TargetDir string `json:"target_dir" jsonschema:"absolute path to the directory to scan"`
+	Scope     string `json:"scope,omitempty" jsonschema:"optional scan scope: quick (default), full, or release"`
 }
 
 // ScanOutput is the structured tool output: a complete evidence report
@@ -45,7 +46,11 @@ func NewServer() *mcp.Server {
 
 // RunClearanceScan is the tool handler delegating execution to the shared core.
 func RunClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanArgs) (*mcp.CallToolResult, ScanOutput, error) {
-	report, err := app.Scan(ctx, args.TargetDir)
+	scope := args.Scope
+	if scope == "" {
+		scope = "quick"
+	}
+	report, err := app.ScanWithOptions(ctx, args.TargetDir, app.ScanOptions{Scope: scope})
 	if err != nil {
 		return nil, report, err
 	}

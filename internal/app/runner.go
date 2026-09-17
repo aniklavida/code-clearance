@@ -16,7 +16,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -32,6 +34,8 @@ type Spec struct {
 	Args []string
 	// Dir is the working directory the process runs in.
 	Dir string
+	// Env specifies additional environment variables in KEY=VALUE format.
+	Env []string
 	// Timeout bounds total wall-clock time. Zero means no bound beyond
 	// the caller's context.
 	Timeout time.Duration
@@ -57,6 +61,22 @@ type Result struct {
 	// reported here — that is a normal, expected outcome for scanners
 	// that use exit codes to signal "findings present".
 	Err error
+}
+
+// State returns a distinct, visible state name for this process execution:
+// "ok", "timed-out", "crashed", or "cancelled". None of the non-zero/non-ok
+// states can be confused with a pass.
+func (r Result) State() string {
+	if r.TimedOut {
+		return "timed-out"
+	}
+	if r.Killed {
+		return "cancelled"
+	}
+	if r.Err != nil || (r.ExitCode != 0 && r.ExitCode != 1) {
+		return "crashed"
+	}
+	return "ok"
 }
 
 // ErrNotInstalled is returned (wrapped) when the target executable cannot
@@ -114,6 +134,9 @@ func Run(ctx context.Context, s Spec) Result {
 
 	cmd := exec.Command(s.Command, s.Args...)
 	cmd.Dir = s.Dir
+	if len(s.Env) > 0 {
+		cmd.Env = append(os.Environ(), s.Env...)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -182,4 +205,56 @@ func exitCodeOf(cmd *exec.Cmd, waitErr error) int {
 		return exitErr.ExitCode()
 	}
 	return -1
+}
+
+// RunParallel runs multiple Specs concurrently with bounded concurrency.
+//
+// Each child process is invoked with an explicit working directory, argument
+// arrays (no shell strings), bounded timeouts, and cancellation. One optional
+// adapter crashing or panicking cannot corrupt another adapter's results.
+func RunParallel(ctx context.Context, specs []Spec, maxConcurrency int) []Result {
+	if len(specs) == 0 {
+		return nil
+	}
+	if maxConcurrency <= 0 {
+		maxConcurrency = len(specs)
+	}
+
+	results := make([]Result, len(specs))
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	for i, s := range specs {
+		wg.Add(1)
+		go func(idx int, spec Spec) {
+			defer wg.Done()
+			defer func() {
+				if rec := recover(); rec != nil {
+					results[idx] = Result{
+						Name:     spec.Name,
+						ExitCode: -1,
+						Err:      fmt.Errorf("panic in runner goroutine: %v", rec),
+					}
+				}
+			}()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[idx] = Result{
+					Name:     spec.Name,
+					ExitCode: -1,
+					Killed:   true,
+					Err:      ctx.Err(),
+				}
+				return
+			}
+
+			results[idx] = Run(ctx, spec)
+		}(i, s)
+	}
+
+	wg.Wait()
+	return results
 }
