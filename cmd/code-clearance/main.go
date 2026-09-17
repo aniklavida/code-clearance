@@ -14,6 +14,7 @@ import (
 	"github.com/aniklavida/code-clearance/internal/app"
 	"github.com/aniklavida/code-clearance/internal/evidence"
 	"github.com/aniklavida/code-clearance/internal/mcpserver"
+	"github.com/aniklavida/code-clearance/internal/report"
 )
 
 func main() {
@@ -96,39 +97,9 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func printHumanReport(report evidence.Report, w io.Writer) {
-	if report.Coverage.Scope != "" {
-		fmt.Fprintf(w, "Scope:       %s\n", report.Coverage.Scope)
-	}
-	fmt.Fprintf(w, "Repository:  %s\n", report.Target.Repository)
-	fmt.Fprintf(w, "Commit:      %s\n", report.Target.Commit)
-	fmt.Fprintf(w, "Dirty:       %v\n", report.Target.Dirty)
-	fmt.Fprintf(w, "Fingerprint: %s\n", report.Target.Fingerprint)
-	fmt.Fprintln(w)
-
-	totalFindings := 0
-	for _, run := range report.Runs {
-		fmt.Fprintf(w, "[%s] %s (exit %d, %s)\n", run.Status, run.Tool, run.ExitCode, run.Duration)
-		if len(run.Findings) > 0 {
-			totalFindings += len(run.Findings)
-			for _, f := range run.Findings {
-				locStr := ""
-				if len(f.Locations) > 0 {
-					locStr = f.Locations[0].URI
-					if f.Locations[0].StartLine != nil {
-						locStr = fmt.Sprintf("%s:%d", locStr, *f.Locations[0].StartLine)
-					}
-				}
-				fmt.Fprintf(w, "  - [%s] %s: %s (%s)\n", f.NormalizedSeverity, f.RuleID, f.Message, locStr)
-			}
-		}
-	}
-
-	fmt.Fprintln(w)
-	if totalFindings == 0 {
-		fmt.Fprintln(w, "Clearance: no findings reported.")
-	} else {
-		fmt.Fprintf(w, "Clearance: %d finding(s) reported.\n", totalFindings)
+func printHumanReport(r evidence.Report, w io.Writer) {
+	if err := report.WriteTerminal(r, w); err != nil {
+		fmt.Fprintf(w, "report error: %v\n", err)
 	}
 }
 
