@@ -60,6 +60,7 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "output report as JSON")
+	scopeFlag := fs.String("scope", "quick", "scan scope: quick (changed files), full (all files), release")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -69,7 +70,7 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		targetDir = fs.Arg(0)
 	}
 
-	report, err := app.Scan(ctx, targetDir)
+	report, err := app.ScanWithOptions(ctx, targetDir, app.ScanOptions{Scope: *scopeFlag})
 	if err != nil {
 		fmt.Fprintf(stderr, "scan error: %v\n", err)
 		return 1
@@ -96,6 +97,9 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 }
 
 func printHumanReport(report evidence.Report, w io.Writer) {
+	if report.Coverage.Scope != "" {
+		fmt.Fprintf(w, "Scope:       %s\n", report.Coverage.Scope)
+	}
 	fmt.Fprintf(w, "Repository:  %s\n", report.Target.Repository)
 	fmt.Fprintf(w, "Commit:      %s\n", report.Target.Commit)
 	fmt.Fprintf(w, "Dirty:       %v\n", report.Target.Dirty)

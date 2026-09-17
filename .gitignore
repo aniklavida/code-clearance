@@ -2,9 +2,13 @@
 /code-clearance
 /dist/
 
+# Local run metadata and raw artifacts
+.clearance/
+
 # Go
 *.test
 *.out
 
 # macOS
 .DS_Store
+
