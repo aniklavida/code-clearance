@@ -76,7 +76,7 @@ func parseSemgrepNative(toolName, toolVersion string, data []byte) ([]evidence.F
 	}
 
 	var findings []evidence.Finding
-	seen := map[string]bool{}
+	seen := map[string]int{}
 
 	for i, res := range out.Results {
 		nativeSev := res.Extra.Severity
@@ -155,10 +155,13 @@ func parseSemgrepNative(toolName, toolVersion string, data []byte) ([]evidence.F
 		f.ID = fingerprint(f)
 		f.Fingerprint = f.ID
 
-		if !seen[f.ID] {
-			seen[f.ID] = true
-			findings = append(findings, f)
+		if idx, ok := seen[f.ID]; ok {
+			findings[idx].DuplicateFindingIDs = append(findings[idx].DuplicateFindingIDs, f.ID)
+			findings[idx].RelatedFindingIDs = append(findings[idx].RelatedFindingIDs, f.ID)
+			continue
 		}
+		seen[f.ID] = len(findings)
+		findings = append(findings, f)
 	}
 
 	return findings, nil
@@ -185,7 +188,7 @@ func parseGitleaksNative(toolName, toolVersion string, data []byte) ([]evidence.
 	}
 
 	var findings []evidence.Finding
-	seen := map[string]bool{}
+	seen := map[string]int{}
 
 	for i, item := range items {
 		startLine := item.StartLine
@@ -250,10 +253,13 @@ func parseGitleaksNative(toolName, toolVersion string, data []byte) ([]evidence.
 		f.ID = fingerprint(f)
 		f.Fingerprint = f.ID
 
-		if !seen[f.ID] {
-			seen[f.ID] = true
-			findings = append(findings, f)
+		if idx, ok := seen[f.ID]; ok {
+			findings[idx].DuplicateFindingIDs = append(findings[idx].DuplicateFindingIDs, f.ID)
+			findings[idx].RelatedFindingIDs = append(findings[idx].RelatedFindingIDs, f.ID)
+			continue
 		}
+		seen[f.ID] = len(findings)
+		findings = append(findings, f)
 	}
 
 	return findings, nil
@@ -308,7 +314,7 @@ func parseOSVScannerNative(toolName, toolVersion string, data []byte) ([]evidenc
 	}
 
 	var findings []evidence.Finding
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	rawIdx := 0
 
 	for _, res := range out.Results {
@@ -391,10 +397,13 @@ func parseOSVScannerNative(toolName, toolVersion string, data []byte) ([]evidenc
 				f.ID = fingerprint(f)
 				f.Fingerprint = f.ID
 
-				if !seen[f.ID] {
-					seen[f.ID] = true
-					findings = append(findings, f)
+				if idx, ok := seen[f.ID]; ok {
+					findings[idx].DuplicateFindingIDs = append(findings[idx].DuplicateFindingIDs, f.ID)
+					findings[idx].RelatedFindingIDs = append(findings[idx].RelatedFindingIDs, f.ID)
+					continue
 				}
+				seen[f.ID] = len(findings)
+				findings = append(findings, f)
 			}
 		}
 	}
@@ -439,7 +448,7 @@ func parseTrivyNative(toolName, toolVersion string, data []byte) ([]evidence.Fin
 	}
 
 	var findings []evidence.Finding
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	rawIdx := 0
 
 	for _, res := range out.Results {
@@ -522,10 +531,13 @@ func parseTrivyNative(toolName, toolVersion string, data []byte) ([]evidence.Fin
 			f.ID = fingerprint(f)
 			f.Fingerprint = f.ID
 
-			if !seen[f.ID] {
-				seen[f.ID] = true
-				findings = append(findings, f)
+			if idx, ok := seen[f.ID]; ok {
+				findings[idx].DuplicateFindingIDs = append(findings[idx].DuplicateFindingIDs, f.ID)
+				findings[idx].RelatedFindingIDs = append(findings[idx].RelatedFindingIDs, f.ID)
+				continue
 			}
+			seen[f.ID] = len(findings)
+			findings = append(findings, f)
 		}
 	}
 
