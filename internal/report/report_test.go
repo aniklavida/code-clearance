@@ -49,84 +49,113 @@ func minimalValidReport() evidence.Report {
 // TestUncoveredCheckAppearsDistinctlyInBothReports verifies that a tool with
 // StatusNotInstalled appears in the uncovered section of the terminal output
 // and in uncovered.unavailable in the JSON output, and is NOT shown as a pass.
+// We test all four categories: Skipped, Crashed, TimedOut, Unavailable.
 func TestUncoveredCheckAppearsDistinctlyInBothReports(t *testing.T) {
-	r := minimalValidReport()
-
-	// Add a run that was not installed (unavailable)
-	r.Runs = append(r.Runs, evidence.RunOutcome{
-		Tool:        "missing-tool",
-		ToolVersion: "unknown",
-		Command:     "missing-tool scan",
-		ExitCode:    -1,
-		Duration:    "0s",
-		Status:      evidence.StatusNotInstalled,
-		Findings:    []evidence.Finding{},
-	})
-	r.Uncovered.Unavailable = []evidence.UncoveredCheck{
-		{Tool: "missing-tool", Reason: "executable not found on PATH"},
-	}
-	// When unavailable checks exist, outcome must be incomplete per schema
-	r.Outcome = evidence.OutcomeIncomplete
-	r.Reason = "required adapter missing-tool was not installed"
-
-	// Terminal output
-	var termBuf bytes.Buffer
-	if err := report.WriteTerminal(r, &termBuf); err != nil {
-		t.Fatalf("WriteTerminal: %v", err)
-	}
-	termOut := termBuf.String()
-
-	// JSON output
-	var jsonBuf bytes.Buffer
-	if err := report.WriteJSON(r, &jsonBuf); err != nil {
-		t.Fatalf("WriteJSON: %v", err)
-	}
-
-	// Assert: terminal contains "missing-tool" in an uncovered section
-	if !strings.Contains(termOut, "Uncovered") {
-		t.Fatal("terminal output missing 'Uncovered' section header")
-	}
-	if !strings.Contains(termOut, "missing-tool") {
-		t.Error("terminal output does not mention missing-tool at all")
-	}
-	// The uncovered section must contain missing-tool
-	uncovIdx := strings.Index(termOut, "Uncovered")
-	toolAfterUncov := strings.Contains(termOut[uncovIdx:], "missing-tool")
-	if !toolAfterUncov {
-		t.Error("missing-tool does not appear after the Uncovered section header in terminal output")
+	categories := []struct {
+		name    string
+		jsonKey string
+		setup   func(*evidence.Report)
+	}{
+		{
+			name:    "Skipped",
+			jsonKey: "skipped",
+			setup: func(r *evidence.Report) {
+				r.Uncovered.Skipped = []evidence.UncoveredCheck{{Tool: "missing-tool", Reason: "skipped by config"}}
+				r.Runs = append(r.Runs, evidence.RunOutcome{Tool: "missing-tool", Status: evidence.StatusSkipped})
+			},
+		},
+		{
+			name:    "Crashed",
+			jsonKey: "crashed",
+			setup: func(r *evidence.Report) {
+				r.Uncovered.Crashed = []evidence.UncoveredCheck{{Tool: "missing-tool", Reason: "segfault"}}
+				r.Runs = append(r.Runs, evidence.RunOutcome{Tool: "missing-tool", Status: evidence.StatusCrashed})
+			},
+		},
+		{
+			name:    "Timed out",
+			jsonKey: "timed_out",
+			setup: func(r *evidence.Report) {
+				r.Uncovered.TimedOut = []evidence.UncoveredCheck{{Tool: "missing-tool", Reason: "exceeded 5m"}}
+				r.Runs = append(r.Runs, evidence.RunOutcome{Tool: "missing-tool", Status: evidence.StatusTimedOut})
+			},
+		},
+		{
+			name:    "Unavailable",
+			jsonKey: "unavailable",
+			setup: func(r *evidence.Report) {
+				r.Uncovered.Unavailable = []evidence.UncoveredCheck{{Tool: "missing-tool", Reason: "not on PATH"}}
+				r.Runs = append(r.Runs, evidence.RunOutcome{Tool: "missing-tool", Status: evidence.StatusNotInstalled})
+			},
+		},
 	}
 
-	// Assert: tool does NOT appear under a passing label like "ok"
-	// Check that the tool is not labelled as "ok" in the tools section before
-	// the Uncovered block.
-	toolsIdx := strings.Index(termOut, "── Tools ──")
-	if toolsIdx != -1 {
-		toolsSection := termOut[toolsIdx:uncovIdx]
-		if strings.Contains(toolsSection, "status=ok") && strings.Contains(toolsSection, "missing-tool") {
-			t.Error("missing-tool appears with status=ok in the Tools section — it must not be shown as a pass")
-		}
-	}
+	for _, tc := range categories {
+		t.Run(tc.name, func(t *testing.T) {
+			r := minimalValidReport()
+			tc.setup(&r)
+			r.Outcome = evidence.OutcomeIncomplete
+			r.Reason = "required adapter missing-tool was not installed"
 
-	// Assert: JSON has missing-tool in uncovered.unavailable
-	var parsed map[string]any
-	if err := json.Unmarshal(jsonBuf.Bytes(), &parsed); err != nil {
-		t.Fatalf("JSON parse: %v", err)
-	}
-	uncov, _ := parsed["uncovered"].(map[string]any)
-	if uncov == nil {
-		t.Fatal("JSON missing 'uncovered' key")
-	}
-	unavail, _ := uncov["unavailable"].([]any)
-	foundInUnavail := false
-	for _, item := range unavail {
-		m, _ := item.(map[string]any)
-		if m != nil && m["tool"] == "missing-tool" {
-			foundInUnavail = true
-			break
-		}
-	}
-	if !foundInUnavail {
-		t.Errorf("missing-tool not found in JSON uncovered.unavailable: %v", unavail)
+			var termBuf bytes.Buffer
+			if err := report.WriteTerminal(r, &termBuf); err != nil {
+				t.Fatalf("WriteTerminal: %v", err)
+			}
+			termOut := termBuf.String()
+
+			var jsonBuf bytes.Buffer
+			if err := report.WriteJSON(r, &jsonBuf); err != nil {
+				t.Fatalf("WriteJSON: %v", err)
+			}
+
+			// Terminal output must have 'Uncovered' header
+			uncovIdx := strings.Index(termOut, "── Uncovered ──")
+			if uncovIdx == -1 {
+				t.Fatal("terminal output missing '── Uncovered ──' section header")
+			}
+
+			// Bound the check to the Uncovered section
+			uncovBlock := termOut[uncovIdx:]
+			if nextIdx := strings.Index(uncovBlock[15:], "── "); nextIdx != -1 {
+				uncovBlock = uncovBlock[:15+nextIdx]
+			}
+
+			if !strings.Contains(uncovBlock, "missing-tool") {
+				t.Errorf("missing-tool does not appear in the Uncovered block for category %s. Block content:\n%s", tc.name, uncovBlock)
+			}
+
+			if !strings.Contains(uncovBlock, tc.name+":") {
+				t.Errorf("Uncovered block missing category label %q", tc.name+":")
+			}
+
+			// Check that the tool is not labelled as "ok" in the tools section before the Uncovered block.
+			toolsIdx := strings.Index(termOut, "── Tools ──")
+			if toolsIdx != -1 {
+				toolsSection := termOut[toolsIdx:uncovIdx]
+				if strings.Contains(toolsSection, "status=ok") && strings.Contains(toolsSection, "missing-tool") {
+					t.Error("missing-tool appears with status=ok in the Tools section — it must not be shown as a pass")
+				}
+			}
+
+			// JSON assertion
+			var parsed map[string]any
+			if err := json.Unmarshal(jsonBuf.Bytes(), &parsed); err != nil {
+				t.Fatalf("JSON parse: %v", err)
+			}
+			uncov, _ := parsed["uncovered"].(map[string]any)
+			catList, _ := uncov[tc.jsonKey].([]any)
+			found := false
+			for _, item := range catList {
+				m, _ := item.(map[string]any)
+				if m != nil && m["tool"] == "missing-tool" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("missing-tool not found in JSON uncovered.%s", tc.jsonKey)
+			}
+		})
 	}
 }
 

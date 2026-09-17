@@ -95,27 +95,24 @@ func WriteTerminal(r evidence.Report, w io.Writer) error {
 	fmt.Fprintln(w)
 
 	// 5. Uncovered checks
-	hasUncovered := len(r.Uncovered.Skipped) > 0 ||
-		len(r.Uncovered.Crashed) > 0 ||
-		len(r.Uncovered.TimedOut) > 0 ||
-		len(r.Uncovered.Unavailable) > 0
-
-	if hasUncovered {
-		fmt.Fprintln(w, "── Uncovered ──")
-
-		printUncoveredSection := func(label string, checks []evidence.UncoveredCheck) {
-			if len(checks) > 0 {
-				fmt.Fprintf(w, "  %s:\n", label)
-				for _, c := range checks {
-					fmt.Fprintf(w, "    %s: %s\n", c.Tool, c.Reason)
-				}
+	var uncovBuf strings.Builder
+	printUncoveredSection := func(label string, checks []evidence.UncoveredCheck) {
+		if len(checks) > 0 {
+			fmt.Fprintf(&uncovBuf, "  %s:\n", label)
+			for _, c := range checks {
+				fmt.Fprintf(&uncovBuf, "    %s: %s\n", c.Tool, c.Reason)
 			}
 		}
+	}
 
-		printUncoveredSection("Skipped", r.Uncovered.Skipped)
-		printUncoveredSection("Crashed", r.Uncovered.Crashed)
-		printUncoveredSection("Timed out", r.Uncovered.TimedOut)
-		printUncoveredSection("Unavailable", r.Uncovered.Unavailable)
+	printUncoveredSection("Skipped", r.Uncovered.Skipped)
+	printUncoveredSection("Crashed", r.Uncovered.Crashed)
+	printUncoveredSection("Timed out", r.Uncovered.TimedOut)
+	printUncoveredSection("Unavailable", r.Uncovered.Unavailable)
+
+	if uncovBuf.Len() > 0 {
+		fmt.Fprintln(w, "── Uncovered ──")
+		fmt.Fprint(w, uncovBuf.String())
 		fmt.Fprintln(w)
 	}
 
