@@ -144,6 +144,9 @@ type Finding struct {
 	ToolVersion string `json:"tool_version"`
 	RuleID      string `json:"rule_id"`
 
+	// Command is the tool command invocation that produced this finding.
+	Command string `json:"command,omitempty"`
+
 	// NativeSeverity is the original severity as reported by the tool.
 	// REQUIRED: Normalization must never destroy source evidence.
 	NativeSeverity string `json:"native_severity"`

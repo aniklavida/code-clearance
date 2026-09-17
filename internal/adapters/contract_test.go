@@ -8,10 +8,7 @@ import (
 )
 
 func TestAdapters_ContractDeclarations(t *testing.T) {
-	adapters := []Adapter{
-		NewGitleaksAdapter(),
-		NewOSVScannerAdapter(),
-	}
+	adapters := DefaultAdapters()
 
 	for _, a := range adapters {
 		t.Run(a.Name(), func(t *testing.T) {

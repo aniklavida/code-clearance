@@ -91,3 +91,18 @@ SARIF `versionControlProvenance` records a repository URL and commit hash, but c
 
 ### 13. Expiring Residual Risk Tracking (`residual_risk`)
 When a finding is accepted rather than remediated, Code Clearance requires an explicit business justification, an owner, and a hard expiration timestamp (`expires_at`). Expired acceptances automatically revert to blocking findings.
+
+---
+
+## 3. Native JSON Ingestion and Boundary Sanitization
+
+For scanners whose SARIF output is lossy or absent, Code Clearance ingests native JSON to preserve original source detail:
+
+- **Semgrep Community Edition**: Ingests `semgrep scan --json` preserving native severities (`ERROR`, `WARNING`, `INFO`), precise AST check IDs, line ranges, and line snippets.
+- **Gitleaks**: Ingests native JSON output containing rule IDs, commit/entropy details, and matched locations.
+- **OSV-Scanner**: Ingests native JSON output preserving package ecosystems, exact dependency versions, and vulnerability alias arrays.
+- **Trivy**: Ingests native JSON output (`trivy fs -f json`) preserving target files, vulnerability IDs, package names, installed/fixed versions, and upstream URLs.
+
+### Secret Redaction Invariant
+All text fields across findings (`message`, `details`, `snippet`, `match`, `context`) are scrubbed by the normalization boundary redactor before findings can reach a report or an agent's context. Live credential patterns (such as tokens and API keys) are replaced with `[REDACTED]`, ensuring sensitive material is never leaked to models or published reports while preserving cryptographic snippet hashes.
+

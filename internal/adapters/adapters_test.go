@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aniklavida/code-clearance/internal/app"
 	"github.com/aniklavida/code-clearance/internal/evidence"
+	"github.com/aniklavida/code-clearance/internal/normalize"
 )
 
 // requireTool skips when a scanner this project drives as a separate process
@@ -148,7 +150,7 @@ func TestOSVScanner_RealProcess_HungProcessKilledByTimeout(t *testing.T) {
 	t.Logf("osv-scanner killed after %v under a 1ns timeout", elapsed)
 }
 
-// The card's headline safety constraint is that a killed or timed-out adapter
+// The headline safety constraint is that a killed or timed-out adapter
 // surfaces as unavailable evidence, never as a pass. The engine-level test for
 // this builds its own status mapping inside the test body, so it proves the
 // runner detects a timeout but never exercises the mapping in this package —
@@ -173,5 +175,94 @@ func TestGitleaks_TimedOutRunIsNeverReportedAsAPass(t *testing.T) {
 	}
 	if len(outcome.Findings) != 0 {
 		t.Fatalf("a killed run reported %d findings; it produced no evidence at all", len(outcome.Findings))
+	}
+}
+
+func TestAdapter_MalformedFileProducesNamedErrorAndUnavailableCheck(t *testing.T) {
+	tempDir := t.TempDir()
+	badSarifPath := filepath.Join(tempDir, "corrupted.sarif")
+	if err := os.WriteFile(badSarifPath, []byte(`{"version": "2.1.0", truncated...`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fakeRes := app.Result{
+		ExitCode: 0,
+		Duration: time.Millisecond * 10,
+	}
+
+	outcome := finishFromSarifFile("gitleaks", "v8.30.1", badSarifPath, fakeRes, normalize.GitleaksSeverity, map[int]bool{0: true})
+
+	// Must NOT be StatusOK (which would be an empty pass!)
+	if outcome.Status == evidence.StatusOK {
+		t.Fatal("malformed file produced StatusOK — a corrupted output must never be treated as an empty pass!")
+	}
+	// Must be StatusUnavailable
+	if outcome.Status != evidence.StatusUnavailable {
+		t.Fatalf("outcome.Status = %s, want %s", outcome.Status, evidence.StatusUnavailable)
+	}
+	// StderrTail must contain a named error mentioning sarif/parse
+	if !strings.Contains(outcome.StderrTail, "sarif") && !strings.Contains(outcome.StderrTail, "parse") {
+		t.Fatalf("outcome.StderrTail %q does not describe the parse failure", outcome.StderrTail)
+	}
+	if len(outcome.Findings) != 0 {
+		t.Fatalf("malformed file produced %d findings, expected 0", len(outcome.Findings))
+	}
+}
+
+func TestAdapter_UnsupportedVersionProducesNamedErrorAndUnavailableCheck(t *testing.T) {
+	unsupportedAdapters := []struct {
+		tool string
+		ver  string
+	}{
+		{"gitleaks", "v7.0.0"},
+		{"osv-scanner", "v3.0.0"},
+		{"semgrep", "v2.0.0"},
+		{"trivy", "v1.0.0"},
+	}
+
+	for _, tc := range unsupportedAdapters {
+		err := normalize.ValidateToolVersion(tc.tool, tc.ver)
+		if err == nil {
+			t.Fatalf("expected error for unsupported version %s on %s", tc.ver, tc.tool)
+		}
+		if !strings.Contains(err.Error(), tc.tool) || !strings.Contains(err.Error(), tc.ver) {
+			t.Fatalf("error %q must name both tool %s and version %s", err.Error(), tc.tool, tc.ver)
+		}
+	}
+}
+
+func TestFinding_FullEvidenceBundle(t *testing.T) {
+	finding := evidence.Finding{
+		Command:            "gitleaks detect --no-git --report-format sarif",
+		Tool:               "gitleaks",
+		ToolVersion:        "v8.30.1",
+		RuleID:             "slack-bot-token",
+		NativeSeverity:     "CRITICAL",
+		NormalizedSeverity: evidence.SeverityCritical,
+		Locations: []evidence.Location{
+			{URI: "config.py"},
+		},
+		RawArtifact: evidence.ArtifactReference{
+			URI:    "artifacts/gitleaks.sarif",
+			Format: "sarif",
+			Index:  0,
+		},
+		RawIndex: 0,
+	}
+
+	if finding.Command == "" {
+		t.Fatal("finding missing Command in evidence bundle")
+	}
+	if finding.ToolVersion == "" {
+		t.Fatal("finding missing ToolVersion in evidence bundle")
+	}
+	if finding.RuleID == "" {
+		t.Fatal("finding missing RuleID in evidence bundle")
+	}
+	if len(finding.Locations) == 0 || finding.Locations[0].URI == "" {
+		t.Fatal("finding missing Location in evidence bundle")
+	}
+	if finding.RawArtifact.URI == "" {
+		t.Fatal("finding missing RawArtifact reference in evidence bundle")
 	}
 }
