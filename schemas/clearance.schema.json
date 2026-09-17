@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeclearance.dev/schemas/v1/clearance.schema.json",
+  "title": "Code Clearance Configuration",
+  "description": "Versioned configuration schema for clearance.yaml, defining adapters, policy, scope rules, and minimum evidence criteria.",
+  "type": "object",
+  "required": [
+    "version",
+    "adapters",
+    "paths",
+    "scopes",
+    "policy",
+    "commands",
+    "limits",
+    "outcomes"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": ["v1", "1.0.0"]
+    },
+    "adapters": {
+      "type": "object",
+      "description": "Required and optional adapters for clearance.",
+      "required": ["required", "optional"],
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "optional": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "description": "Path rules for file inclusion and exclusion.",
+      "required": ["include", "exclude"],
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exclude": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "scopes": {
+      "type": "object",
+      "description": "Execution scopes and their adapter/command bindings.",
+      "required": ["quick", "full", "release"],
+      "properties": {
+        "quick": { "$ref": "#/$defs/scope_rule" },
+        "full": { "$ref": "#/$defs/scope_rule" },
+        "release": { "$ref": "#/$defs/scope_rule" }
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "description": "Blocking rules, risk acceptance, and dirty-tree permissions.",
+      "required": ["blocking_severities", "allow_dirty", "accepted_risks"],
+      "properties": {
+        "blocking_severities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          }
+        },
+        "allow_dirty": {
+          "type": "boolean",
+          "description": "Whether an uncommitted dirty working tree is permitted."
+        },
+        "accepted_risks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["reason", "expires_at"],
+            "properties": {
+              "finding_id": { "type": "string" },
+              "rule_id": { "type": "string" },
+              "tool": { "type": "string" },
+              "reason": { "type": "string" },
+              "expires_at": { "type": "string" },
+              "owner": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "commands": {
+      "type": "object",
+      "description": "Project-defined commands to run during clearance.",
+      "required": ["required", "optional"],
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/command_rule" }
+        },
+        "optional": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/command_rule" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "description": "Execution timeouts and concurrency bounds.",
+      "required": ["timeout_seconds", "max_concurrency"],
+      "properties": {
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_concurrency": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "outcomes": {
+      "type": "object",
+      "description": "Minimum evidence required for each clearance outcome.",
+      "required": ["minimum_evidence"],
+      "properties": {
+        "minimum_evidence": {
+          "type": "object",
+          "required": ["cleared", "cleared_with_residual_risk", "blocked", "incomplete"],
+          "properties": {
+            "cleared": {
+              "type": "object",
+              "required": ["required_adapters_must_pass", "zero_blocking_findings", "clean_tree_required"],
+              "properties": {
+                "required_adapters_must_pass": { "type": "boolean" },
+                "zero_blocking_findings": { "type": "boolean" },
+                "clean_tree_required": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            },
+            "cleared_with_residual_risk": {
+              "type": "object",
+              "required": ["accepted_risks_unexpired"],
+              "properties": {
+                "accepted_risks_unexpired": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            },
+            "blocked": {
+              "type": "object",
+              "required": ["blocking_finding_present"],
+              "properties": {
+                "blocking_finding_present": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            },
+            "incomplete": {
+              "type": "object",
+              "required": ["missing_required_adapter", "crashed_or_timed_out"],
+              "properties": {
+                "missing_required_adapter": { "type": "boolean" },
+                "crashed_or_timed_out": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "scope_rule": {
+      "type": "object",
+      "required": ["adapters", "commands", "allow_dirty"],
+      "properties": {
+        "adapters": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allow_dirty": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "command_rule": {
+      "type": "object",
+      "required": ["name", "run"],
+      "properties": {
+        "name": { "type": "string" },
+        "run": { "type": "string" },
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

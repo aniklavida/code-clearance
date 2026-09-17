@@ -1,12 +1,14 @@
 // Package adapters wires the process runner and the SARIF normalizer
-// together for the first two tools. This is deliberately not a general
-// adapter framework — it is just enough to prove the orchestration ->
-// SARIF -> evidence pipeline end to end for the MCP tool call.
+// together for the first two tools. It provides concrete Adapter implementations
+// declaring capability, availability, version, input scope, command,
+// exit semantics, raw output, and normalized findings.
 package adapters
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,51 +18,230 @@ import (
 	"github.com/aniklavida/code-clearance/internal/normalize"
 )
 
-// DefaultTimeout bounds a single adapter invocation. A configurable
-// product would make this configurable per policy profile.
+// DefaultTimeout bounds a single adapter invocation.
 const DefaultTimeout = 20 * time.Second
 
-// Adapter runs one external tool against targetDir and returns a
-// normalized RunOutcome. Exit-code interpretation is tool-specific:
-// gitleaks and osv-scanner both use "0 = clean, 1 = findings present" but
-// a future adapter could differ, so each Adapter owns its own mapping.
-type Adapter func(ctx context.Context, targetDir string) evidence.RunOutcome
+// Ensure GitleaksAdapter and OSVScannerAdapter satisfy the Adapter interface at compile time.
+var (
+	_ Adapter = (*GitleaksAdapter)(nil)
+	_ Adapter = (*OSVScannerAdapter)(nil)
+)
 
-// Gitleaks runs `gitleaks detect --no-git --report-format sarif` against
-// targetDir. Exit code 0 means no leaks; exit code 1 means leaks were
-// found (both are a completed run, not a crash); anything else is
-// treated as Crashed.
-func Gitleaks(ctx context.Context, targetDir string) evidence.RunOutcome {
+// GitleaksAdapter implements Adapter for the Gitleaks secrets scanner.
+type GitleaksAdapter struct {
+	version string
+}
+
+// NewGitleaksAdapter constructs a new Gitleaks adapter instance.
+func NewGitleaksAdapter() *GitleaksAdapter {
+	return &GitleaksAdapter{version: "v8.30.1"}
+}
+
+func (a *GitleaksAdapter) Name() string {
+	return "gitleaks"
+}
+
+func (a *GitleaksAdapter) Capability() Capability {
+	return CapabilitySecrets
+}
+
+func (a *GitleaksAdapter) Version() string {
+	return a.version
+}
+
+func (a *GitleaksAdapter) InputScope() InputScope {
+	return ScopeRepository
+}
+
+func (a *GitleaksAdapter) ExitSemantics() ExitSemantics {
+	return ExitSemantics{
+		SuccessExitCodes:  []int{0},
+		FindingsExitCodes: []int{1},
+	}
+}
+
+// Availability checks whether gitleaks is executable on PATH.
+// Availability is a required field, not an optional one.
+func (a *GitleaksAdapter) Availability(ctx context.Context) Availability {
+	path, err := exec.LookPath("gitleaks")
+	if err != nil {
+		return Availability{
+			Available: false,
+			Reason:    "gitleaks executable missing on PATH",
+		}
+	}
+	return Availability{
+		Available: true,
+		Reason:    "gitleaks is installed",
+		Path:      path,
+	}
+}
+
+func (a *GitleaksAdapter) Command(target string) []string {
+	return []string{
+		"gitleaks",
+		"detect",
+		"--no-git",
+		"--source", target,
+		"--report-format", "sarif",
+		"--exit-code", "1",
+	}
+}
+
+func (a *GitleaksAdapter) Descriptor(ctx context.Context, target string) Descriptor {
+	return Descriptor{
+		Name:          a.Name(),
+		Capability:    a.Capability(),
+		Availability:  a.Availability(ctx),
+		Version:       a.Version(),
+		InputScope:    a.InputScope(),
+		Command:       a.Command(target),
+		ExitSemantics: a.ExitSemantics(),
+	}
+}
+
+// Run executes Gitleaks against targetDir.
+func (a *GitleaksAdapter) Run(ctx context.Context, targetDir string) evidence.RunOutcome {
+	avail := a.Availability(ctx)
+	cmdStr := strings.Join(a.Command(targetDir), " ")
+
+	if !avail.Available {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusNotInstalled,
+			StderrTail:  avail.Reason,
+		}
+	}
+
 	reportDir, err := os.MkdirTemp("", "code-clearance-gitleaks-*")
 	if err != nil {
-		return evidence.RunOutcome{Tool: "gitleaks", ToolVersion: "v8.30.1", Status: evidence.StatusCrashed, StderrTail: "mkdtemp: " + err.Error()}
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusCrashed,
+			StderrTail:  "mkdtemp: " + err.Error(),
+		}
 	}
 	defer os.RemoveAll(reportDir)
-	sarifPath := reportDir + "/report.sarif"
+	sarifPath := filepath.Join(reportDir, "report.sarif")
+
+	args := []string{
+		"detect",
+		"--no-git",
+		"--source", targetDir,
+		"--report-format", "sarif",
+		"--report-path", sarifPath,
+		"--exit-code", "1",
+	}
 
 	res := app.Run(ctx, app.Spec{
-		Name:    "gitleaks",
+		Name:    a.Name(),
 		Command: "gitleaks",
-		Args: []string{
-			"detect",
-			"--no-git",
-			"--source", targetDir,
-			"--report-format", "sarif",
-			"--report-path", sarifPath,
-			"--exit-code", "1",
-		},
+		Args:    args,
 		Dir:     targetDir,
 		Timeout: DefaultTimeout,
 	})
-	return finishFromSarifFile("gitleaks", "v8.30.1", sarifPath, res, normalize.GitleaksSeverity, map[int]bool{0: true, 1: true})
+
+	outcome := finishFromSarifFile(a.Name(), a.Version(), sarifPath, res, normalize.GitleaksSeverity, map[int]bool{0: true, 1: true})
+	outcome.Command = cmdStr
+	return outcome
 }
 
-// OSVScanner runs `osv-scanner scan source --format sarif -L <lockfile>`.
-// Exit code 0 means no vulnerabilities; exit code 1 means vulnerabilities
-// were found; anything else is treated as Crashed.
-func OSVScanner(ctx context.Context, lockfilePath string) evidence.RunOutcome {
+// OSVScannerAdapter implements Adapter for the OSV-Scanner dependency scanner.
+type OSVScannerAdapter struct {
+	version string
+}
+
+// NewOSVScannerAdapter constructs a new OSV-Scanner adapter instance.
+func NewOSVScannerAdapter() *OSVScannerAdapter {
+	return &OSVScannerAdapter{version: "v2.5.1"}
+}
+
+func (a *OSVScannerAdapter) Name() string {
+	return "osv-scanner"
+}
+
+func (a *OSVScannerAdapter) Capability() Capability {
+	return CapabilityDependencies
+}
+
+func (a *OSVScannerAdapter) Version() string {
+	return a.version
+}
+
+func (a *OSVScannerAdapter) InputScope() InputScope {
+	return ScopeLockfile
+}
+
+func (a *OSVScannerAdapter) ExitSemantics() ExitSemantics {
+	return ExitSemantics{
+		SuccessExitCodes:  []int{0},
+		FindingsExitCodes: []int{1},
+	}
+}
+
+// Availability checks whether osv-scanner is executable on PATH.
+// Availability is a required field, not an optional one.
+func (a *OSVScannerAdapter) Availability(ctx context.Context) Availability {
+	path, err := exec.LookPath("osv-scanner")
+	if err != nil {
+		return Availability{
+			Available: false,
+			Reason:    "osv-scanner executable missing on PATH",
+		}
+	}
+	return Availability{
+		Available: true,
+		Reason:    "osv-scanner is installed",
+		Path:      path,
+	}
+}
+
+func (a *OSVScannerAdapter) Command(target string) []string {
+	return []string{
+		"osv-scanner",
+		"scan",
+		"source",
+		"--format", "sarif",
+		"-L", target,
+	}
+}
+
+func (a *OSVScannerAdapter) Descriptor(ctx context.Context, target string) Descriptor {
+	return Descriptor{
+		Name:          a.Name(),
+		Capability:    a.Capability(),
+		Availability:  a.Availability(ctx),
+		Version:       a.Version(),
+		InputScope:    a.InputScope(),
+		Command:       a.Command(target),
+		ExitSemantics: a.ExitSemantics(),
+	}
+}
+
+// Run executes OSV-Scanner against lockfilePath.
+func (a *OSVScannerAdapter) Run(ctx context.Context, lockfilePath string) evidence.RunOutcome {
+	avail := a.Availability(ctx)
+	cmdStr := strings.Join(a.Command(lockfilePath), " ")
+
+	if !avail.Available {
+		return evidence.RunOutcome{
+			Tool:        a.Name(),
+			ToolVersion: a.Version(),
+			Command:     cmdStr,
+			ExitCode:    -1,
+			Status:      evidence.StatusNotInstalled,
+			StderrTail:  avail.Reason,
+		}
+	}
+
 	res := app.Run(ctx, app.Spec{
-		Name:    "osv-scanner",
+		Name:    a.Name(),
 		Command: "osv-scanner",
 		Args: []string{
 			"scan", "source",
@@ -71,9 +252,9 @@ func OSVScanner(ctx context.Context, lockfilePath string) evidence.RunOutcome {
 	})
 
 	outcome := evidence.RunOutcome{
-		Tool:        "osv-scanner",
-		ToolVersion: "v2.5.1",
-		Command:     "osv-scanner scan source --format sarif -L " + lockfilePath,
+		Tool:        a.Name(),
+		ToolVersion: a.Version(),
+		Command:     cmdStr,
 		ExitCode:    res.ExitCode,
 		Duration:    res.Duration.String(),
 		StderrTail:  tail(res.Stderr, 10),
@@ -97,13 +278,30 @@ func OSVScanner(ctx context.Context, lockfilePath string) evidence.RunOutcome {
 		outcome.StderrTail = outcome.StderrTail + "\nsarif parse error: " + err.Error()
 		return outcome
 	}
-	outcome.Findings = normalize.Normalize("osv-scanner", "v2.5.1", log, normalize.OSVScannerSeverity)
+
+	outcome.Findings = normalize.Normalize(a.Name(), a.Version(), log, normalize.OSVScannerSeverity)
+	outcome.RawArtifact = &evidence.ArtifactReference{
+		URI:    fmt.Sprintf("sarif://%s/stdout", a.Name()),
+		Format: "sarif",
+		Index:  0,
+	}
+
 	if res.ExitCode == 0 {
 		outcome.Status = evidence.StatusOK
 	} else {
 		outcome.Status = evidence.StatusFindings
 	}
 	return outcome
+}
+
+// Gitleaks runs the Gitleaks adapter against targetDir.
+func Gitleaks(ctx context.Context, targetDir string) evidence.RunOutcome {
+	return NewGitleaksAdapter().Run(ctx, targetDir)
+}
+
+// OSVScanner runs the OSV-Scanner adapter against lockfilePath.
+func OSVScanner(ctx context.Context, lockfilePath string) evidence.RunOutcome {
+	return NewOSVScannerAdapter().Run(ctx, lockfilePath)
 }
 
 func finishFromSarifFile(tool, version, sarifPath string, res app.Result, sev normalize.SeverityRule, okExit map[int]bool) evidence.RunOutcome {
@@ -141,6 +339,12 @@ func finishFromSarifFile(tool, version, sarifPath string, res app.Result, sev no
 		return outcome
 	}
 	outcome.Findings = normalize.Normalize(tool, version, log, sev)
+	outcome.RawArtifact = &evidence.ArtifactReference{
+		URI:    sarifPath,
+		Format: "sarif",
+		Index:  0,
+	}
+
 	if res.ExitCode == 0 {
 		outcome.Status = evidence.StatusOK
 	} else {
@@ -161,18 +365,28 @@ func tail(b []byte, n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// DefaultAdapters returns the full suite of default concrete adapters.
+func DefaultAdapters() []Adapter {
+	return []Adapter{
+		NewGitleaksAdapter(),
+		NewOSVScannerAdapter(),
+	}
+}
+
 // DefaultScanners returns the default adapter suite wired for clearance.
 func DefaultScanners() []app.ScannerAdapter {
+	g := NewGitleaksAdapter()
+	o := NewOSVScannerAdapter()
 	return []app.ScannerAdapter{
 		func(ctx context.Context, targetDir string) []evidence.RunOutcome {
-			return []evidence.RunOutcome{Gitleaks(ctx, targetDir)}
+			return []evidence.RunOutcome{g.Run(ctx, targetDir)}
 		},
 		func(ctx context.Context, targetDir string) []evidence.RunOutcome {
 			lockfile := filepath.Join(targetDir, "package-lock.json")
 			if _, err := os.Stat(lockfile); err != nil {
 				return nil
 			}
-			return []evidence.RunOutcome{OSVScanner(ctx, lockfile)}
+			return []evidence.RunOutcome{o.Run(ctx, lockfile)}
 		},
 	}
 }

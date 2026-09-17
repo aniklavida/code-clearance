@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeclearance.dev/schemas/v1/report.schema.json",
+  "title": "Code Clearance Report",
+  "description": "Versioned report schema for Code Clearance scans, binding findings, tool runs, uncovered checks, coverage and residual risk to repository target state.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "target",
+    "outcome",
+    "runs",
+    "findings",
+    "uncovered",
+    "coverage",
+    "residual_risk",
+    "timestamps"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["v1", "1.0.0"]
+    },
+    "target": {
+      "type": "object",
+      "required": ["repository", "commit", "dirty", "fingerprint"],
+      "properties": {
+        "repository": { "type": "string" },
+        "commit": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "fingerprint": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["cleared", "cleared-with-residual-risk", "blocked", "incomplete"]
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "tool_version", "command", "exit_code", "duration", "status", "findings"],
+        "properties": {
+          "tool": { "type": "string" },
+          "tool_version": { "type": "string" },
+          "command": { "type": "string" },
+          "exit_code": { "type": "integer" },
+          "duration": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "ok-findings", "crashed", "timed-out", "not-installed", "skipped", "unavailable"]
+          },
+          "findings": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/finding" }
+          },
+          "stderr_tail": { "type": "string" },
+          "raw_artifact": { "$ref": "#/$defs/artifact_reference" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "uncovered": {
+      "type": "object",
+      "description": "Checks not covered, recorded separately by non-pass cause.",
+      "required": ["skipped", "crashed", "timed_out", "unavailable"],
+      "properties": {
+        "skipped": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uncovered_check" }
+        },
+        "crashed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uncovered_check" }
+        },
+        "timed_out": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uncovered_check" }
+        },
+        "unavailable": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uncovered_check" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["scope", "files_checked", "adapters_ran", "summary"],
+      "properties": {
+        "scope": { "type": "string" },
+        "files_checked": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "adapters_ran": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "summary": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "residual_risk": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "reason"],
+        "properties": {
+          "finding_id": { "type": "string" },
+          "rule_id": { "type": "string" },
+          "tool": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low", "unknown"]
+          },
+          "reason": { "type": "string" },
+          "accepted_by": { "type": "string" },
+          "expires_at": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "required": ["started_at", "completed_at"],
+      "properties": {
+        "started_at": { "type": "string" },
+        "completed_at": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "uncovered": {
+            "type": "object",
+            "properties": {
+              "unavailable": {
+                "type": "array",
+                "minItems": 1
+              }
+            },
+            "required": ["unavailable"]
+          }
+        },
+        "required": ["uncovered"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "enum": ["incomplete"]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "fingerprint",
+        "tool",
+        "tool_version",
+        "rule_id",
+        "native_severity",
+        "normalized_severity",
+        "locations",
+        "scope",
+        "snippet_hash",
+        "message",
+        "evidence",
+        "remediation",
+        "confidence",
+        "challenge_status",
+        "reviewer",
+        "related_finding_ids",
+        "duplicate_finding_ids",
+        "verification_runs",
+        "disposition",
+        "timestamps",
+        "raw_artifact"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "fingerprint": { "type": "string" },
+        "tool": { "type": "string" },
+        "tool_version": { "type": "string" },
+        "rule_id": { "type": "string" },
+        "native_severity": { "type": "string" },
+        "normalized_severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low", "unknown"]
+        },
+        "locations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/location" }
+        },
+        "scope": {
+          "type": "object",
+          "required": ["commit", "path"],
+          "properties": {
+            "commit": { "type": "string" },
+            "diff_base": { "type": "string" },
+            "path": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "snippet_hash": { "type": "string" },
+        "message": { "type": "string" },
+        "evidence": {
+          "type": "object",
+          "required": ["details"],
+          "properties": {
+            "details": { "type": "string" },
+            "snippet": { "type": "string" },
+            "match": { "type": "string" },
+            "context": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "remediation": {
+          "type": "object",
+          "required": ["recommendation"],
+          "properties": {
+            "recommendation": { "type": "string" },
+            "documentation_url": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "confidence": {
+          "type": "object",
+          "required": ["level", "rationale"],
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": ["high", "medium", "low", "unknown"]
+            },
+            "rationale": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "challenge_status": {
+          "type": "string",
+          "enum": ["unreviewed", "confirmed", "rejected", "accepted-risk", "fixed", "unresolved"]
+        },
+        "reviewer": {
+          "type": "object",
+          "required": ["type", "identity"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["tool", "agent", "human"]
+            },
+            "identity": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "related_finding_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "duplicate_finding_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "fix_patch": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" },
+            "diff": { "type": "string" },
+            "commit": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "verification_runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["run_id", "timestamp", "status", "outcome"],
+            "properties": {
+              "run_id": { "type": "string" },
+              "timestamp": { "type": "string" },
+              "status": { "type": "string" },
+              "outcome": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "disposition": { "type": "string" },
+        "timestamps": {
+          "type": "object",
+          "required": ["detected_at"],
+          "properties": {
+            "detected_at": { "type": "string" },
+            "updated_at": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "raw_artifact": { "$ref": "#/$defs/artifact_reference" },
+        "raw_index": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "location": {
+      "type": "object",
+      "required": ["uri"],
+      "properties": {
+        "uri": { "type": "string" },
+        "start_line": { "type": "integer" },
+        "start_column": { "type": "integer" },
+        "end_line": { "type": "integer" },
+        "end_column": { "type": "integer" },
+        "snippet": { "type": "string" },
+        "snippet_hash": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "artifact_reference": {
+      "type": "object",
+      "required": ["uri", "format", "index"],
+      "properties": {
+        "uri": { "type": "string" },
+        "format": { "type": "string" },
+        "index": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "uncovered_check": {
+      "type": "object",
+      "required": ["tool", "reason"],
+      "properties": {
+        "tool": { "type": "string" },
+        "command": { "type": "string" },
+        "reason": { "type": "string" },
+        "exit_code": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

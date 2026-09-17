@@ -1,0 +1,233 @@
+{
+  "schema_version": "v1",
+  "target": {
+    "repository": "https://github.com/example/demo-repo",
+    "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+    "dirty": false,
+    "fingerprint": "clean"
+  },
+  "outcome": "cleared-with-residual-risk",
+  "runs": [
+    {
+      "tool": "gitleaks",
+      "tool_version": "v8.30.1",
+      "command": "gitleaks detect --no-git --report-format sarif",
+      "exit_code": 0,
+      "duration": "45ms",
+      "status": "ok",
+      "findings": [],
+      "stderr_tail": "",
+      "raw_artifact": {
+        "uri": "artifacts/gitleaks.sarif",
+        "format": "sarif",
+        "index": 0
+      }
+    },
+    {
+      "tool": "osv-scanner",
+      "tool_version": "v2.5.1",
+      "command": "osv-scanner scan source --format sarif -L package-lock.json",
+      "exit_code": 1,
+      "duration": "1.2s",
+      "status": "ok-findings",
+      "findings": [
+        {
+          "id": "e3b0c44298fc1c14",
+          "fingerprint": "e3b0c44298fc1c14",
+          "tool": "osv-scanner",
+          "tool_version": "v2.5.1",
+          "rule_id": "GHSA-p6mc-m468-83gw",
+          "native_severity": "7.5",
+          "normalized_severity": "high",
+          "locations": [
+            {
+              "uri": "package-lock.json",
+              "start_line": 42,
+              "start_column": 1,
+              "end_line": 42,
+              "end_column": 25,
+              "snippet": "\"lodash\": \"4.17.15\"",
+              "snippet_hash": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+            }
+          ],
+          "scope": {
+            "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+            "diff_base": "HEAD~1",
+            "path": "package-lock.json"
+          },
+          "snippet_hash": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+          "message": "Prototype pollution vulnerability in lodash",
+          "evidence": {
+            "details": "CVE-2020-8203 affecting lodash versions prior to 4.17.19",
+            "snippet": "\"lodash\": \"4.17.15\"",
+            "match": "lodash@4.17.15",
+            "context": "Direct dependency in package-lock.json"
+          },
+          "remediation": {
+            "recommendation": "Upgrade lodash to version 4.17.21 or higher",
+            "documentation_url": "https://github.com/advisories/GHSA-p6mc-m468-83gw"
+          },
+          "confidence": {
+            "level": "high",
+            "rationale": "Direct lockfile match confirmed by official OSV database entry"
+          },
+          "challenge_status": "accepted-risk",
+          "reviewer": {
+            "type": "human",
+            "identity": "security-reviewer"
+          },
+          "related_finding_ids": [
+            "CVE-2020-8203"
+          ],
+          "duplicate_finding_ids": [],
+          "fix_patch": {
+            "path": "patches/upgrade-lodash.patch",
+            "diff": "--- package.json\n+++ package.json\n- \"lodash\": \"4.17.15\"\n+ \"lodash\": \"4.17.21\"",
+            "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+          },
+          "verification_runs": [
+            {
+              "run_id": "verify-run-1",
+              "timestamp": "2026-09-17T10:00:00Z",
+              "status": "ok",
+              "outcome": "fix verified in staging branch"
+            }
+          ],
+          "disposition": "accepted",
+          "timestamps": {
+            "detected_at": "2026-09-17T09:30:00Z",
+            "updated_at": "2026-09-17T10:15:00Z"
+          },
+          "raw_artifact": {
+            "uri": "artifacts/osv-scanner.sarif",
+            "format": "sarif",
+            "index": 0
+          },
+          "raw_index": 0
+        }
+      ],
+      "stderr_tail": "",
+      "raw_artifact": {
+        "uri": "artifacts/osv-scanner.sarif",
+        "format": "sarif",
+        "index": 0
+      }
+    }
+  ],
+  "findings": [
+    {
+      "id": "e3b0c44298fc1c14",
+      "fingerprint": "e3b0c44298fc1c14",
+      "tool": "osv-scanner",
+      "tool_version": "v2.5.1",
+      "rule_id": "GHSA-p6mc-m468-83gw",
+      "native_severity": "7.5",
+      "normalized_severity": "high",
+      "locations": [
+        {
+          "uri": "package-lock.json",
+          "start_line": 42,
+          "start_column": 1,
+          "end_line": 42,
+          "end_column": 25,
+          "snippet": "\"lodash\": \"4.17.15\"",
+          "snippet_hash": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        }
+      ],
+      "scope": {
+        "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+        "diff_base": "HEAD~1",
+        "path": "package-lock.json"
+      },
+      "snippet_hash": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+      "message": "Prototype pollution vulnerability in lodash",
+      "evidence": {
+        "details": "CVE-2020-8203 affecting lodash versions prior to 4.17.19",
+        "snippet": "\"lodash\": \"4.17.15\"",
+        "match": "lodash@4.17.15",
+        "context": "Direct dependency in package-lock.json"
+      },
+      "remediation": {
+        "recommendation": "Upgrade lodash to version 4.17.21 or higher",
+        "documentation_url": "https://github.com/advisories/GHSA-p6mc-m468-83gw"
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "Direct lockfile match confirmed by official OSV database entry"
+      },
+      "challenge_status": "accepted-risk",
+      "reviewer": {
+        "type": "human",
+        "identity": "security-reviewer"
+      },
+      "related_finding_ids": [
+        "CVE-2020-8203"
+      ],
+      "duplicate_finding_ids": [],
+      "fix_patch": {
+        "path": "patches/upgrade-lodash.patch",
+        "diff": "--- package.json\n+++ package.json\n- \"lodash\": \"4.17.15\"\n+ \"lodash\": \"4.17.21\"",
+        "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+      },
+      "verification_runs": [
+        {
+          "run_id": "verify-run-1",
+          "timestamp": "2026-09-17T10:00:00Z",
+          "status": "ok",
+          "outcome": "fix verified in staging branch"
+        }
+      ],
+      "disposition": "accepted",
+      "timestamps": {
+        "detected_at": "2026-09-17T09:30:00Z",
+        "updated_at": "2026-09-17T10:15:00Z"
+      },
+      "raw_artifact": {
+        "uri": "artifacts/osv-scanner.sarif",
+        "format": "sarif",
+        "index": 0
+      },
+      "raw_index": 0
+    }
+  ],
+  "uncovered": {
+    "skipped": [
+      {
+        "tool": "semgrep",
+        "command": "semgrep scan --config auto",
+        "reason": "no source files matched configured language patterns"
+      }
+    ],
+    "crashed": [],
+    "timed_out": [],
+    "unavailable": []
+  },
+  "coverage": {
+    "scope": "quick",
+    "files_checked": [
+      "package-lock.json",
+      "package.json",
+      "src/index.js"
+    ],
+    "adapters_ran": [
+      "gitleaks",
+      "osv-scanner"
+    ],
+    "summary": "2 adapters executed, 1 adapter skipped due to scope rules"
+  },
+  "residual_risk": [
+    {
+      "finding_id": "e3b0c44298fc1c14",
+      "rule_id": "GHSA-p6mc-m468-83gw",
+      "tool": "osv-scanner",
+      "severity": "high",
+      "reason": "Scheduled for remediation in upcoming dependency upgrade cycle",
+      "accepted_by": "security-reviewer",
+      "expires_at": "2026-12-31T23:59:59Z"
+    }
+  ],
+  "timestamps": {
+    "started_at": "2026-09-17T09:29:50Z",
+    "completed_at": "2026-09-17T09:30:05Z"
+  }
+}
