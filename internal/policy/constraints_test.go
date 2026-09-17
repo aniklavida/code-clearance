@@ -243,6 +243,70 @@ func TestConstraint2_SourceEvidenceMustNeverBeDestroyed(t *testing.T) {
 
 // Constraint 3: Identical evidence and configuration must produce an identical outcome.
 // Nothing feeding the verdict may depend on a clock or on run ordering.
+// TestConstraint3_UncoveredOrderingIsIndependentOfRunOrder covers the case the
+// permutation test below cannot reach.
+//
+// That test permutes run order, but every adapter in its scenario produced a
+// result, so `Uncovered` stays empty and there is no order-sensitive field in
+// the verdict for the permutation to disturb. Remove *both* order
+// normalisations in Evaluate — the input sort over `runs` and `sortUncovered`
+// on the way out — and it still passes. It cannot detect run-order dependence.
+//
+// This one can. Three required adapters produce no results (not installed,
+// unavailable, timed out), so the verdict carries three uncovered entries whose
+// order follows the order the runs arrived in. With both normalisations removed
+// it fails; with either one present it passes, because determinism here is
+// protected twice over and no single-point sabotage reveals it.
+func TestConstraint3_UncoveredOrderingIsIndependentOfRunOrder(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Adapters.Required = []string{"zeta", "alpha", "mu"}
+
+	target := evidence.TargetBinding{
+		Repository: "example/repo",
+		Commit:     "0000000000000000000000000000000000000000",
+	}
+	timestamps := evidence.ReportTimestamps{
+		StartedAt:   "2026-01-01T00:00:00Z",
+		CompletedAt: "2026-01-01T00:01:00Z",
+	}
+
+	zeta := evidence.RunOutcome{Tool: "zeta", ToolVersion: "v1", Command: "zeta", Status: evidence.StatusNotInstalled}
+	alpha := evidence.RunOutcome{Tool: "alpha", ToolVersion: "v1", Command: "alpha", Status: evidence.StatusUnavailable}
+	mu := evidence.RunOutcome{Tool: "mu", ToolVersion: "v1", Command: "mu", Status: evidence.StatusTimedOut}
+
+	perms := [][]evidence.RunOutcome{
+		{zeta, alpha, mu},
+		{mu, zeta, alpha},
+		{alpha, mu, zeta},
+	}
+
+	var first []byte
+	for i, runs := range perms {
+		rep := evidence.Report{
+			SchemaVersion: "v1",
+			Target:        target,
+			Runs:          runs,
+			Timestamps:    timestamps,
+		}
+		v := Evaluate(cfg, rep)
+		if v.Outcome != evidence.OutcomeIncomplete {
+			t.Fatalf("permutation %d: required adapters did not run, want %q, got %q",
+				i, evidence.OutcomeIncomplete, v.Outcome)
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("permutation %d: marshal: %v", i, err)
+		}
+		if i == 0 {
+			first = b
+			continue
+		}
+		if !bytes.Equal(first, b) {
+			t.Fatalf("ACCEPTANCE FAILURE: verdict depends on run order.\npermutation 0: %s\npermutation %d: %s", first, i, b)
+		}
+	}
+}
+
 func TestConstraint3_IdenticalEvidenceAndConfigProducesByteIdenticalVerdicts(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Policy.BlockingSeverities = []evidence.Severity{evidence.SeverityCritical, evidence.SeverityHigh}
