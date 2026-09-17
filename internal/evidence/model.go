@@ -1,12 +1,20 @@
 // Package evidence defines the normalized, tool-agnostic finding model
-// that Code Clearance ingests SARIF into. It is deliberately narrow,
-// sized to what was needed to represent real
-// gitleaks and osv-scanner output without losing information.
+// that Code Clearance ingests SARIF and scanner outputs into.
 package evidence
 
+// ClearanceOutcome represents the overall policy verdict of a clearance run.
+type ClearanceOutcome string
+
+const (
+	OutcomeCleared                 ClearanceOutcome = "cleared"
+	OutcomeClearedWithResidualRisk ClearanceOutcome = "cleared-with-residual-risk"
+	OutcomeBlocked                 ClearanceOutcome = "blocked"
+	OutcomeIncomplete              ClearanceOutcome = "incomplete"
+)
+
 // Severity is a normalized severity band. The mapping from tool-native
-// severity to this band is adapter-specific (see internal/sarifing) and is
-// deliberately narrow so that policy rules can compare across tools.
+// severity to this band is adapter-specific and is deliberately narrow so
+// that policy rules can compare across tools.
 type Severity string
 
 const (
@@ -17,55 +25,198 @@ const (
 	SeverityUnknown  Severity = "unknown"
 )
 
+// ChallengeStatus represents the triage disposition of a finding.
+type ChallengeStatus string
+
+const (
+	ChallengeUnreviewed   ChallengeStatus = "unreviewed"
+	ChallengeConfirmed    ChallengeStatus = "confirmed"
+	ChallengeRejected     ChallengeStatus = "rejected"
+	ChallengeAcceptedRisk ChallengeStatus = "accepted-risk"
+	ChallengeFixed        ChallengeStatus = "fixed"
+	ChallengeUnresolved   ChallengeStatus = "unresolved"
+)
+
+// ReviewerType identifies the type of entity that performed a review.
+type ReviewerType string
+
+const (
+	ReviewerTool  ReviewerType = "tool"
+	ReviewerAgent ReviewerType = "agent"
+	ReviewerHuman ReviewerType = "human"
+)
+
+// Reviewer identifies the entity that challenged or reviewed a finding.
+type Reviewer struct {
+	Type     ReviewerType `json:"type"`
+	Identity string       `json:"identity"`
+}
+
+// ConfidenceLevel captures how confident the adapter or reviewer is in a finding.
+type ConfidenceLevel string
+
+const (
+	ConfidenceHigh    ConfidenceLevel = "high"
+	ConfidenceMedium  ConfidenceLevel = "medium"
+	ConfidenceLow     ConfidenceLevel = "low"
+	ConfidenceUnknown ConfidenceLevel = "unknown"
+)
+
+// Confidence pairs a confidence rating with an explanatory rationale.
+type Confidence struct {
+	Level     ConfidenceLevel `json:"level"`
+	Rationale string          `json:"rationale"`
+}
+
+// FindingScope captures the commit and diff context of a finding.
+type FindingScope struct {
+	Commit   string `json:"commit"`
+	DiffBase string `json:"diff_base,omitempty"`
+	Path     string `json:"path"`
+}
+
+// FindingEvidence captures the concrete snippet, match string, or data proving the issue.
+type FindingEvidence struct {
+	Details string `json:"details"`
+	Snippet string `json:"snippet,omitempty"`
+	Match   string `json:"match,omitempty"`
+	Context string `json:"context,omitempty"`
+}
+
+// Remediation provides actionable guidance to resolve the finding.
+type Remediation struct {
+	Recommendation   string `json:"recommendation"`
+	DocumentationURL string `json:"documentation_url,omitempty"`
+}
+
+// ArtifactReference points to the raw scanner output artifact.
+type ArtifactReference struct {
+	URI    string `json:"uri"`
+	Format string `json:"format"`
+	Index  int    `json:"index"`
+}
+
+// PatchReference tracks candidate or applied remediation patches.
+type PatchReference struct {
+	Path   string `json:"path,omitempty"`
+	Diff   string `json:"diff,omitempty"`
+	Commit string `json:"commit,omitempty"`
+}
+
+// VerificationRun tracks reruns validating whether a fix succeeded.
+type VerificationRun struct {
+	RunID     string    `json:"run_id"`
+	Timestamp string    `json:"timestamp"`
+	Status    RunStatus `json:"status"`
+	Outcome   string    `json:"outcome"`
+}
+
+// FindingTimestamps records detection and update times.
+type FindingTimestamps struct {
+	DetectedAt string `json:"detected_at"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
+}
+
 // Location points at the file/region a finding concerns. Region fields are
-// pointers because some tools (osv-scanner, for manifest-level findings)
-// give a whole-file location with no line/column at all — a real observed
-// divergence, not a hypothetical one.
+// pointers because some tools (e.g. osv-scanner for manifest-level findings)
+// give a whole-file location with no line/column at all.
 type Location struct {
-	URI         string
-	StartLine   *int
-	StartColumn *int
-	EndLine     *int
-	EndColumn   *int
-	Snippet     string
+	URI         string `json:"uri"`
+	StartLine   *int   `json:"start_line,omitempty"`
+	StartColumn *int   `json:"start_column,omitempty"`
+	EndLine     *int   `json:"end_line,omitempty"`
+	EndColumn   *int   `json:"end_column,omitempty"`
+	Snippet     string `json:"snippet,omitempty"`
+	SnippetHash string `json:"snippet_hash,omitempty"`
 }
 
 // Finding is one normalized result, traceable back to exactly one raw
-// SARIF result in exactly one tool run.
+// scanner result in exactly one tool run.
 type Finding struct {
-	// ID is a stable identifier derived deterministically from the
-	// fields below (see Fingerprint), so the same underlying finding
-	// gets the same ID across repeated runs against unchanged code.
-	ID string
+	// ID is a stable identifier derived deterministically.
+	ID string `json:"id"`
 
-	Tool        string // adapter name, e.g. "gitleaks", "osv-scanner"
-	ToolVersion string
-	RuleID      string
-	Message     string
+	// Fingerprint is the invariant content hash of the finding.
+	Fingerprint string `json:"fingerprint"`
 
-	NativeSeverity     string // exactly what the tool/rule reported, if anything
-	NormalizedSeverity Severity
+	// Tool is the adapter name, e.g. "gitleaks", "osv-scanner".
+	Tool        string `json:"tool"`
+	ToolVersion string `json:"tool_version"`
+	RuleID      string `json:"rule_id"`
 
-	Locations []Location
+	// NativeSeverity is the original severity as reported by the tool.
+	// REQUIRED: Normalization must never destroy source evidence.
+	NativeSeverity string `json:"native_severity"`
 
-	// RawIndex is the index of this result within the raw SARIF run's
-	// results array, so raw evidence remains reachable without
-	// re-parsing.
-	RawIndex int
+	// NormalizedSeverity is the normalized band for cross-tool policy comparison.
+	NormalizedSeverity Severity `json:"normalized_severity"`
+
+	// Locations records where the finding occurred.
+	Locations []Location `json:"locations"`
+
+	// Scope captures commit and path context.
+	Scope FindingScope `json:"scope"`
+
+	// SnippetHash is the cryptographic hash over the offending snippet.
+	SnippetHash string `json:"snippet_hash"`
+
+	// Message is the primary description of the issue.
+	Message string `json:"message"`
+
+	// Evidence contains concrete proof, match text, or context.
+	Evidence FindingEvidence `json:"evidence"`
+
+	// Remediation offers guidance on resolving the issue.
+	Remediation Remediation `json:"remediation"`
+
+	// Confidence captures confidence level and rationale.
+	Confidence Confidence `json:"confidence"`
+
+	// ChallengeStatus tracks triage state.
+	ChallengeStatus ChallengeStatus `json:"challenge_status"`
+
+	// Reviewer records the reviewer type and identity.
+	Reviewer Reviewer `json:"reviewer"`
+
+	// RelatedFindingIDs links findings related to this one.
+	RelatedFindingIDs []string `json:"related_finding_ids"`
+
+	// DuplicateFindingIDs tracks duplicate findings collapsed into this one.
+	DuplicateFindingIDs []string `json:"duplicate_finding_ids"`
+
+	// FixPatch references candidate or applied fixes.
+	FixPatch *PatchReference `json:"fix_patch,omitempty"`
+
+	// VerificationRuns lists targeted reruns verifying the fix.
+	VerificationRuns []VerificationRun `json:"verification_runs"`
+
+	// Disposition is the final resolution state.
+	Disposition string `json:"disposition"`
+
+	// Timestamps tracks detection and update times.
+	Timestamps FindingTimestamps `json:"timestamps"`
+
+	// RawArtifact references the raw tool output file and index.
+	// REQUIRED: Normalization must never destroy source evidence.
+	RawArtifact ArtifactReference `json:"raw_artifact"`
+
+	// RawIndex is the index of this result within the raw tool results array.
+	RawIndex int `json:"raw_index"`
 }
 
 // RunOutcome captures what happened when one adapter was invoked, whether
 // or not it produced any findings. A tool that ran cleanly with zero
 // findings and a tool that never ran at all must never be confused.
 type RunOutcome struct {
-	Tool        string
-	ToolVersion string
-	Command     string
-	ExitCode    int
-	Duration    string // formatted for readability in the draft report
-	Status      RunStatus
-	Findings    []Finding
-	StderrTail  string // last lines of stderr, for diagnosing a Crashed/TimedOut run
+	Tool        string             `json:"tool"`
+	ToolVersion string             `json:"tool_version"`
+	Command     string             `json:"command"`
+	ExitCode    int                `json:"exit_code"`
+	Duration    string             `json:"duration"`
+	Status      RunStatus          `json:"status"`
+	Findings    []Finding          `json:"findings"`
+	StderrTail  string             `json:"stderr_tail,omitempty"`
+	RawArtifact *ArtifactReference `json:"raw_artifact,omitempty"`
 }
 
 type RunStatus string
@@ -73,9 +224,11 @@ type RunStatus string
 const (
 	StatusOK           RunStatus = "ok"            // ran to completion, exit code within the tool's expected set
 	StatusFindings     RunStatus = "ok-findings"   // ran to completion, exit code signals "findings present"
-	StatusCrashed      RunStatus = "crashed"       // ran, exited with an unexpected code, or SARIF failed to parse
+	StatusCrashed      RunStatus = "crashed"       // ran, exited with an unexpected code, or output failed to parse
 	StatusTimedOut     RunStatus = "timed-out"     // killed after exceeding its timeout
 	StatusNotInstalled RunStatus = "not-installed" // executable missing on PATH
+	StatusSkipped      RunStatus = "skipped"       // check skipped (e.g. inapplicable files)
+	StatusUnavailable  RunStatus = "unavailable"   // tool unavailable in environment
 )
 
 // NotAGitRepository is the explicit value used when the target directory
@@ -88,29 +241,65 @@ const CleanTreeFingerprint = "clean"
 // TargetBinding binds evidence to the repository, commit SHA, and
 // working-tree state of the scanned target.
 type TargetBinding struct {
-	// Repository identifies the target repository (remote URL or normalized root directory name).
-	// If the target is not a git repository, it explicitly reports NotAGitRepository.
-	Repository string `json:"repository"`
-
-	// Commit is the HEAD commit SHA. If the target is not a git repository,
-	// it explicitly reports NotAGitRepository rather than emitting a blank field.
-	Commit string `json:"commit"`
-
-	// Dirty indicates whether the working tree had uncommitted modifications.
-	Dirty bool `json:"dirty"`
-
-	// Fingerprint distinguishes a clean checkout from a modified working tree.
-	// For a clean tree, it is CleanTreeFingerprint ("clean").
-	// For a dirty tree, it is a deterministic hash over the uncommitted changes.
-	// For a non-git directory, it is NotAGitRepository.
+	Repository  string `json:"repository"`
+	Commit      string `json:"commit"`
+	Dirty       bool   `json:"dirty"`
 	Fingerprint string `json:"fingerprint"`
 }
 
+// UncoveredCheck records a check that did not run to completion.
+type UncoveredCheck struct {
+	Tool     string `json:"tool"`
+	Command  string `json:"command,omitempty"`
+	Reason   string `json:"reason"`
+	ExitCode *int   `json:"exit_code,omitempty"`
+}
+
+// UncoveredChecks categorizes checks that were not covered by non-pass category.
+type UncoveredChecks struct {
+	Skipped     []UncoveredCheck `json:"skipped"`
+	Crashed     []UncoveredCheck `json:"crashed"`
+	TimedOut    []UncoveredCheck `json:"timed_out"`
+	Unavailable []UncoveredCheck `json:"unavailable"`
+}
+
+// CoverageReport summarizes the scope and tools that executed.
+type CoverageReport struct {
+	Scope        string   `json:"scope"`
+	FilesChecked []string `json:"files_checked"`
+	AdaptersRan  []string `json:"adapters_ran"`
+	Summary      string   `json:"summary"`
+}
+
+// ResidualRiskItem captures an accepted risk rule or known limitation.
+type ResidualRiskItem struct {
+	FindingID  string   `json:"finding_id,omitempty"`
+	RuleID     string   `json:"rule_id,omitempty"`
+	Tool       string   `json:"tool,omitempty"`
+	Severity   Severity `json:"severity"`
+	Reason     string   `json:"reason"`
+	AcceptedBy string   `json:"accepted_by,omitempty"`
+	ExpiresAt  string   `json:"expires_at,omitempty"`
+}
+
+// ReportTimestamps tracks start and completion of the overall scan.
+type ReportTimestamps struct {
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at"`
+}
+
 // Report captures the full clearance scan run, binding all adapter outcomes
-// to the target tree state.
+// and findings to the target tree state.
 type Report struct {
-	Target TargetBinding `json:"target"`
-	Runs   []RunOutcome  `json:"runs"`
+	SchemaVersion string             `json:"schema_version"`
+	Target        TargetBinding      `json:"target"`
+	Outcome       ClearanceOutcome   `json:"outcome"`
+	Runs          []RunOutcome       `json:"runs"`
+	Findings      []Finding          `json:"findings"`
+	Uncovered     UncoveredChecks    `json:"uncovered"`
+	Coverage      CoverageReport     `json:"coverage"`
+	ResidualRisk  []ResidualRiskItem `json:"residual_risk"`
+	Timestamps    ReportTimestamps   `json:"timestamps"`
 }
 
 // Commit returns the commit SHA of the target, or "not-a-git-repository".
