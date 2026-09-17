@@ -206,11 +206,14 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 				}
 			}
 
-			// Ensure all findings reference this raw artifact
+			// Ensure all findings reference this raw artifact and command
 			for fIdx := range o.Findings {
 				if o.RawArtifact != nil {
 					o.Findings[fIdx].RawArtifact = *o.RawArtifact
 					o.Findings[fIdx].RawIndex = fIdx
+				}
+				if o.Command != "" && o.Findings[fIdx].Command == "" {
+					o.Findings[fIdx].Command = o.Command
 				}
 			}
 

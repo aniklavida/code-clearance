@@ -81,8 +81,8 @@ type Snippet struct {
 }
 
 // Parse decodes a raw SARIF document. It returns an error for malformed
-// JSON or a missing "runs" array, but deliberately tolerates every field
-// being absent within a run/result.
+// JSON, unsupported SARIF version, or a missing "runs" array, but deliberately tolerates
+// every field being absent within a run/result.
 func Parse(data []byte) (*Log, error) {
 	var log Log
 	if err := json.Unmarshal(data, &log); err != nil {
@@ -90,6 +90,9 @@ func Parse(data []byte) (*Log, error) {
 	}
 	if log.Version == "" {
 		return nil, fmt.Errorf("sarif: missing version field")
+	}
+	if log.Version != "2.1.0" {
+		return nil, fmt.Errorf("sarif: unsupported version %q, expected 2.1.0", log.Version)
 	}
 	if len(log.Runs) == 0 {
 		return nil, fmt.Errorf("sarif: no runs present")
@@ -137,6 +140,34 @@ func OSVScannerSeverity(_ string, result Result, ruleByID map[string]Rule) evide
 	}
 }
 
+// SemgrepSeverity maps Semgrep SARIF level strings to normalized severity.
+func SemgrepSeverity(_ string, result Result, _ map[string]Rule) evidence.Severity {
+	switch strings.ToLower(result.Level) {
+	case "error":
+		return evidence.SeverityHigh
+	case "warning":
+		return evidence.SeverityMedium
+	case "note":
+		return evidence.SeverityLow
+	default:
+		return evidence.SeverityMedium
+	}
+}
+
+// TrivySeverity maps Trivy SARIF level strings to normalized severity.
+func TrivySeverity(_ string, result Result, _ map[string]Rule) evidence.Severity {
+	switch strings.ToLower(result.Level) {
+	case "error":
+		return evidence.SeverityHigh
+	case "warning":
+		return evidence.SeverityMedium
+	case "note":
+		return evidence.SeverityLow
+	default:
+		return evidence.SeverityMedium
+	}
+}
+
 // Normalize converts every result in every run of a parsed SARIF log into
 // evidence.Finding, deduplicating results that are byte-identical after
 // normalization.
@@ -151,12 +182,33 @@ func Normalize(toolName, toolVersion string, log *Log, sev SeverityRule) []evide
 		}
 
 		for i, res := range run.Results {
+			nativeSev := res.Level
+			if nativeSev == "" {
+				if r, ok := ruleByID[res.RuleID]; ok && r.Properties != nil {
+					if secSev, ok := r.Properties["security-severity"].(string); ok && secSev != "" {
+						nativeSev = secSev
+					}
+				}
+			}
+			if nativeSev == "" {
+				if toolName == "gitleaks" {
+					nativeSev = "CRITICAL"
+				} else {
+					nativeSev = "unspecified"
+				}
+			}
+
+			confRationale := fmt.Sprintf("Reported directly by %s scanner", toolName)
+			if res.RuleID != "" {
+				confRationale = fmt.Sprintf("Reported directly by %s scanner for rule %s", toolName, res.RuleID)
+			}
+
 			f := evidence.Finding{
 				Tool:                toolName,
 				ToolVersion:         toolVersion,
 				RuleID:              res.RuleID,
 				Message:             res.Message.Text,
-				NativeSeverity:      res.Level,
+				NativeSeverity:      nativeSev,
 				NormalizedSeverity:  sev(toolName, res, ruleByID),
 				RawIndex:            i,
 				RelatedFindingIDs:   []string{},
@@ -170,7 +222,7 @@ func Normalize(toolName, toolVersion string, log *Log, sev SeverityRule) []evide
 				},
 				Confidence: evidence.Confidence{
 					Level:     evidence.ConfidenceHigh,
-					Rationale: fmt.Sprintf("Reported directly by %s scanner", toolName),
+					Rationale: confRationale,
 				},
 				Remediation: evidence.Remediation{
 					Recommendation: fmt.Sprintf("Review finding %s and apply recommended remediation", res.RuleID),
@@ -223,6 +275,8 @@ func Normalize(toolName, toolVersion string, log *Log, sev SeverityRule) []evide
 			if len(f.Locations) > 0 && f.Locations[0].Snippet != "" {
 				f.Evidence.Snippet = f.Locations[0].Snippet
 			}
+
+			RedactFinding(&f)
 
 			f.ID = fingerprint(f)
 			f.Fingerprint = f.ID

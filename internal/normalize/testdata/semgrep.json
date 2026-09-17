@@ -1,0 +1,23 @@
+{
+  "version": "1.90.0",
+  "results": [
+    {
+      "check_id": "rules.python.security.injection.hardcoded-sql-expression",
+      "path": "app/views.py",
+      "start": {
+        "line": 14,
+        "col": 5
+      },
+      "end": {
+        "line": 14,
+        "col": 65
+      },
+      "extra": {
+        "message": "Possible SQL injection detected in database query execution.",
+        "severity": "WARNING",
+        "lines": "cursor.execute(\"SELECT * FROM users WHERE id = '%s'\" % user_id)"
+      }
+    }
+  ],
+  "errors": []
+}

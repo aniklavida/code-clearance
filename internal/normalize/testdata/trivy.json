@@ -1,0 +1,25 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-09-17T12:00:00Z",
+  "ArtifactName": "fixture-repo",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2020-8203",
+          "PkgName": "lodash",
+          "InstalledVersion": "4.17.15",
+          "FixedVersion": "4.17.21",
+          "Title": "lodash: prototype pollution in lodash",
+          "Description": "Prototype pollution vulnerability in lodash prior to 4.17.19",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2020-8203"
+        }
+      ]
+    }
+  ]
+}
