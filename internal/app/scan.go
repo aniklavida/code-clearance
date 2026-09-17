@@ -25,6 +25,16 @@ type ScanOptions struct {
 	BaseCommit   string // optional base commit for diff calculations
 	StoreRoot    string // optional override for artifact store directory
 	AllowNetwork bool   // whether network access is permitted (default: false)
+
+	// Config is the clearance policy to evaluate against. When nil the
+	// default is used.
+	//
+	// Without this the engine always evaluated DefaultConfig, so a caller
+	// could not declare which adapters are required — and `required` is the
+	// field the whole Incomplete-never-a-pass guarantee rests on. The schema
+	// defined it and the policy layer enforced it, but nothing could reach
+	// the engine to say so.
+	Config *policy.Config
 }
 
 // Engine coordinates scope planning, parallel execution, artifact persistence,
@@ -58,6 +68,9 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	}
 
 	cfg := policy.DefaultConfig()
+	if opts.Config != nil {
+		cfg = *opts.Config
+	}
 
 	// 1. Scope Planner: Resolve concrete files and checks bound to target state
 	plan, err := PlanScope(ctx, absDir, ScopeOptions{
@@ -267,7 +280,16 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	correlate.CorrelateReport(&report)
 
 	// 6. Apply deterministic policy verdict
-	if e != defaultEngine && len(adapters) > 0 {
+	// Deriving the required set from the runs that happened makes the
+	// requirement circular: whatever ran is what was required, so nothing can
+	// ever be missing and "required adapter did not run" is unreachable. The
+	// required set is configuration, and configuration is the caller's.
+	//
+	// It is still derived when the caller supplied adapters and declared no
+	// requirement of their own, because an explicitly supplied adapter is
+	// evidently wanted — but only from the adapters that were *asked for*,
+	// never from the ones that happened to succeed.
+	if e != defaultEngine && len(adapters) > 0 && len(cfg.Adapters.Required) == 0 {
 		var reqs []string
 		for _, r := range runs {
 			if r.Tool != "" {

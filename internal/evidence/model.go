@@ -301,15 +301,19 @@ type ReportTimestamps struct {
 // Report captures the full clearance scan run, binding all adapter outcomes
 // and findings to the target tree state.
 type Report struct {
-	SchemaVersion string             `json:"schema_version"`
-	Target        TargetBinding      `json:"target"`
-	Outcome       ClearanceOutcome   `json:"outcome"`
-	Runs          []RunOutcome       `json:"runs"`
-	Findings      []Finding          `json:"findings"`
-	Uncovered     UncoveredChecks    `json:"uncovered"`
-	Coverage      CoverageReport     `json:"coverage"`
-	ResidualRisk  []ResidualRiskItem `json:"residual_risk"`
-	Timestamps    ReportTimestamps   `json:"timestamps"`
+	SchemaVersion string           `json:"schema_version"`
+	Target        TargetBinding    `json:"target"`
+	Outcome       ClearanceOutcome `json:"outcome"`
+	// Reason states why the outcome is what it is — which required adapters
+	// were unavailable, which did not run, which findings blocked. Without
+	// it a report can say "incomplete" and give the reader nothing to act on.
+	Reason       string             `json:"reason,omitempty"`
+	Runs         []RunOutcome       `json:"runs"`
+	Findings     []Finding          `json:"findings"`
+	Uncovered    UncoveredChecks    `json:"uncovered"`
+	Coverage     CoverageReport     `json:"coverage"`
+	ResidualRisk []ResidualRiskItem `json:"residual_risk"`
+	Timestamps   ReportTimestamps   `json:"timestamps"`
 }
 
 // Commit returns the commit SHA of the target, or "not-a-git-repository".

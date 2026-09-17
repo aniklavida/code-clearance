@@ -225,25 +225,25 @@ func (a *GitleaksAdapter) Run(ctx context.Context, targetDir string) evidence.Ru
 	sarifPath := reportFile.Name()
 	_ = reportFile.Close()
 
-	args := []string{
-		"detect",
-		"--no-git",
-		"--source", targetDir,
-		"--report-format", "sarif",
-		"--report-path", sarifPath,
-		"--exit-code", "1",
-	}
+	// Derive the executed argv from the declared command rather than building
+	// a second one by hand. Two consequences of the old arrangement: the
+	// no-shell check inspected Command() while something else ran, and the
+	// recorded evidence omitted --report-path, so the command in the report
+	// was not the command that ran. Evidence that misdescribes itself is the
+	// one thing this product cannot ship.
+	declared := a.Command(targetDir)
+	args := append(append([]string{}, declared[1:]...), "--report-path", sarifPath)
 
 	res := app.Run(ctx, app.Spec{
 		Name:    a.Name(),
-		Command: "gitleaks",
+		Command: declared[0],
 		Args:    args,
 		Dir:     targetDir,
 		Timeout: DefaultTimeout,
 	})
 
 	outcome := finishFromSarifFile(a.Name(), a.Version(), sarifPath, res, normalize.GitleaksSeverity, map[int]bool{0: true, 1: true})
-	outcome.Command = cmdStr
+	outcome.Command = strings.Join(append([]string{declared[0]}, args...), " ")
 	return outcome
 }
 
@@ -910,16 +910,17 @@ func DefaultScanners() []app.ScannerAdapter {
 			}
 			return []evidence.RunOutcome{o.Run(ctx, targetDir)}
 		},
+		// An unavailable scanner still reports. Returning nil here made a
+		// missing tool vanish from the report entirely — not recorded as
+		// passed, which the schema forbids, but not recorded at all, which
+		// is worse: the policy layer turns an unavailable required adapter
+		// into Incomplete and never saw one, because absence produced no
+		// outcome to see. Gitleaks and OSV-Scanner already behaved this way;
+		// these two did not, and the inconsistency was the bug.
 		func(ctx context.Context, targetDir string) []evidence.RunOutcome {
-			if !s.Availability(ctx).Available {
-				return nil
-			}
 			return []evidence.RunOutcome{s.Run(ctx, targetDir)}
 		},
 		func(ctx context.Context, targetDir string) []evidence.RunOutcome {
-			if !t.Availability(ctx).Available {
-				return nil
-			}
 			return []evidence.RunOutcome{t.Run(ctx, targetDir)}
 		},
 	}
