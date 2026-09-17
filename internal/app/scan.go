@@ -25,6 +25,16 @@ type ScanOptions struct {
 	BaseCommit   string // optional base commit for diff calculations
 	StoreRoot    string // optional override for artifact store directory
 	AllowNetwork bool   // whether network access is permitted (default: false)
+
+	// Config is the clearance policy to evaluate against. When nil the
+	// default is used.
+	//
+	// Without this the engine always evaluated DefaultConfig, so a caller
+	// could not declare which adapters are required — and `required` is the
+	// field the whole Incomplete-never-a-pass guarantee rests on. The schema
+	// defined it and the policy layer enforced it, but nothing could reach
+	// the engine to say so.
+	Config *policy.Config
 }
 
 // Engine coordinates scope planning, parallel execution, artifact persistence,
@@ -58,6 +68,9 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	}
 
 	cfg := policy.DefaultConfig()
+	if opts.Config != nil {
+		cfg = *opts.Config
+	}
 
 	// 1. Scope Planner: Resolve concrete files and checks bound to target state
 	plan, err := PlanScope(ctx, absDir, ScopeOptions{
@@ -188,14 +201,21 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	for _, outcomes := range taskResults {
 		for _, o := range outcomes {
 			// Persist raw artifact if not already saved to this session
-			if o.RawArtifact != nil && o.RawArtifact.URI != "" {
-				// Read artifact data and store into session
-				data, readErr := os.ReadFile(o.RawArtifact.URI)
-				if readErr == nil && len(data) > 0 {
-					ref, saveErr := session.SaveArtifact(o.Tool, o.RawArtifact.Format, data)
-					if saveErr == nil {
-						o.RawArtifact = &ref
-					}
+			var rawBytes []byte
+			if len(o.RawData) > 0 {
+				rawBytes = o.RawData
+			} else if o.RawArtifact != nil && o.RawArtifact.URI != "" {
+				rawBytes, _ = os.ReadFile(o.RawArtifact.URI)
+			}
+
+			if len(rawBytes) > 0 {
+				format := "raw"
+				if o.RawArtifact != nil && o.RawArtifact.Format != "" {
+					format = o.RawArtifact.Format
+				}
+				ref, saveErr := session.SaveArtifact(o.Tool, format, rawBytes)
+				if saveErr == nil {
+					o.RawArtifact = &ref
 				}
 			} else {
 				// Save diagnostic output as raw artifact
@@ -219,7 +239,7 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 			}
 
 			runs = append(runs, o)
-			if o.Tool != "" {
+			if o.Tool != "" && o.Status != evidence.StatusNotInstalled && o.Status != evidence.StatusSkipped {
 				adaptersRan = append(adaptersRan, o.Tool)
 			}
 			allFindings = append(allFindings, o.Findings...)
@@ -260,7 +280,16 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	correlate.CorrelateReport(&report)
 
 	// 6. Apply deterministic policy verdict
-	if e != defaultEngine && len(adapters) > 0 {
+	// Deriving the required set from the runs that happened makes the
+	// requirement circular: whatever ran is what was required, so nothing can
+	// ever be missing and "required adapter did not run" is unreachable. The
+	// required set is configuration, and configuration is the caller's.
+	//
+	// It is still derived when the caller supplied adapters and declared no
+	// requirement of their own, because an explicitly supplied adapter is
+	// evidently wanted — but only from the adapters that were *asked for*,
+	// never from the ones that happened to succeed.
+	if e != defaultEngine && len(adapters) > 0 && len(cfg.Adapters.Required) == 0 {
 		var reqs []string
 		for _, r := range runs {
 			if r.Tool != "" {
