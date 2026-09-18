@@ -10,6 +10,7 @@ import (
 
 	"github.com/aniklavida/code-clearance/internal/app"
 	"github.com/aniklavida/code-clearance/internal/mcpserver"
+	"github.com/aniklavida/code-clearance/internal/store"
 )
 
 func TestEntryPoints_ReachIdenticalResultsThroughCore(t *testing.T) {
@@ -126,5 +127,42 @@ func TestMCPServer_RedactsSecretsInAgentPayload(t *testing.T) {
 		if strings.Contains(fStr, slackSecret) || strings.Contains(fStr, stripeSecret) {
 			t.Fatalf("SECURITY LEAK: finding %s contains unredacted secret!", f.ID)
 		}
+	}
+}
+
+func TestMCPServer_RecordReviewForcesAgent(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	args := app.RecordReviewArgs{
+		TargetDir:        dir,
+		Fingerprint:      "fp-mcp-test",
+		ChallengeStatus:  "rejected",
+		Reason:           "MCP caller is lying",
+		ReviewerType:     "human",
+		ReviewerIdentity: "alice",
+	}
+
+	_, _, err := mcpserver.RecordReview(ctx, nil, args)
+	if err != nil {
+		t.Fatalf("mcpserver.RecordReview: %v", err)
+	}
+
+	st, err := store.New(filepath.Join(dir, ".clearance"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	reviews, err := st.GetReviews()
+	if err != nil {
+		t.Fatalf("GetReviews failed: %v", err)
+	}
+
+	rec, ok := reviews["fp-mcp-test"]
+	if !ok {
+		t.Fatalf("Review not found")
+	}
+
+	if rec.ReviewerType != "agent" {
+		t.Fatalf("Expected ReviewerType to be agent, got %v", rec.ReviewerType)
 	}
 }

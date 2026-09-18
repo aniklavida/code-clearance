@@ -68,6 +68,10 @@ func RunClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanAr
 }
 
 func RecordReview(ctx context.Context, req *mcp.CallToolRequest, args app.RecordReviewArgs) (*mcp.CallToolResult, string, error) {
+	// The MCP tool surface is only ever invoked by an agent, never directly by a human.
+	// Force the reviewer type to agent so that agents cannot bypass human_required_classes
+	// by claiming to be a human reviewer.
+	args.ReviewerType = string(evidence.ReviewerAgent)
 	err := app.RecordReview(ctx, args)
 	if err != nil {
 		return nil, "", err

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aniklavida/code-clearance/internal/evidence"
+	"github.com/aniklavida/code-clearance/internal/policy"
 	"github.com/aniklavida/code-clearance/internal/store"
 )
 
@@ -108,5 +109,73 @@ func TestConstraint_EvidenceStaysVisibleAfterVerdict(t *testing.T) {
 	}
 	if f.ChallengeRationale != "not applicable" {
 		t.Fatalf("rationale not applied, got %q", f.ChallengeRationale)
+	}
+}
+
+func TestConstraint_AgentCannotClearHumanRequiredClass(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	eng := &Engine{}
+	eng.AddAdapter(func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		return []evidence.RunOutcome{
+			{
+				Tool:   "dummy",
+				Status: evidence.StatusOK,
+				Findings: []evidence.Finding{
+					{
+						ID:                 "F1",
+						Fingerprint:        "fp-human-req",
+						Tool:               "dummy",
+						NormalizedSeverity: evidence.SeverityHigh,
+					},
+				},
+			},
+		}
+	})
+
+	// Add human required class config
+	cfg := policy.DefaultConfig()
+	cfg.Adapters.Required = []string{"dummy"}
+	cfg.Policy.HumanRequiredClasses = []policy.HumanRequiredClass{
+		{Tool: "dummy", Severity: evidence.SeverityHigh},
+	}
+
+	// Agent tries to fix it
+	_ = RecordReview(ctx, RecordReviewArgs{
+		TargetDir:        dir,
+		Fingerprint:      "fp-human-req",
+		ChallengeStatus:  "fixed",
+		Reason:           "I fixed it",
+		ReviewerType:     "agent",
+		ReviewerIdentity: "ai-1",
+	})
+
+	report, err := eng.ScanWithOptions(ctx, dir, ScanOptions{Config: &cfg})
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	if report.Outcome != evidence.OutcomeBlocked {
+		t.Fatalf("expected blocked, got %v", report.Outcome)
+	}
+
+	// Human fixes it
+	_ = RecordReview(ctx, RecordReviewArgs{
+		TargetDir:        dir,
+		Fingerprint:      "fp-human-req",
+		ChallengeStatus:  "fixed",
+		Reason:           "I fixed it for real",
+		ReviewerType:     "human",
+		ReviewerIdentity: "alice",
+	})
+
+	report2, err := eng.ScanWithOptions(ctx, dir, ScanOptions{Config: &cfg})
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	if report2.Outcome != evidence.OutcomeCleared {
+		t.Fatalf("expected cleared, got %v", report2.Outcome)
 	}
 }

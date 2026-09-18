@@ -257,7 +257,7 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 
 		reviewerIsHuman := f.Reviewer.Type == evidence.ReviewerHuman
 
-		hasOverrideStatus := f.ChallengeStatus == evidence.ChallengeRejected || f.ChallengeStatus == evidence.ChallengeAcceptedRisk
+		hasOverrideStatus := f.ChallengeStatus == evidence.ChallengeRejected || f.ChallengeStatus == evidence.ChallengeAcceptedRisk || f.ChallengeStatus == evidence.ChallengeFixed
 		ignoreOverride := isHumanReq && !reviewerIsHuman && hasOverrideStatus
 
 		if !ignoreOverride && (f.ChallengeStatus == evidence.ChallengeRejected || f.ChallengeStatus == evidence.ChallengeFixed) {

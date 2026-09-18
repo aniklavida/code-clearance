@@ -473,3 +473,47 @@ func TestConstraint4_HumanRequiredClassesCannotBeClearedByAgent(t *testing.T) {
 		t.Fatalf("expected cleared, got %v", vHuman.Outcome)
 	}
 }
+
+func TestConstraint4_HumanRequiredClassesCannotBeFixedByAgent(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Adapters.Required = []string{"gitleaks"}
+	cfg.Policy.HumanRequiredClasses = []HumanRequiredClass{
+		{Tool: "gitleaks", Severity: evidence.SeverityHigh},
+	}
+
+	finding := evidence.Finding{
+		ID:                 "F1",
+		Tool:               "gitleaks",
+		NormalizedSeverity: evidence.SeverityHigh,
+		ChallengeStatus:    evidence.ChallengeFixed, // Agent tries to claim it's fixed
+		Reviewer: evidence.Reviewer{
+			Type:     evidence.ReviewerAgent,
+			Identity: "ai-reviewer",
+		},
+	}
+
+	rep := evidence.Report{
+		Target: evidence.TargetBinding{Dirty: false},
+		Runs: []evidence.RunOutcome{
+			{Tool: "gitleaks", Status: evidence.StatusOK},
+		},
+		Findings: []evidence.Finding{finding},
+	}
+
+	v := Evaluate(cfg, rep)
+	if v.Outcome != evidence.OutcomeBlocked {
+		t.Fatalf("expected blocked, got %v", v.Outcome)
+	}
+	if len(v.BlockingFindings) == 0 || v.BlockingFindings[0] != "F1" {
+		t.Fatalf("expected F1 to be blocking")
+	}
+
+	// Now a human resolves it
+	rep.Findings[0].Reviewer.Type = evidence.ReviewerHuman
+	rep.Findings[0].Reviewer.Identity = "alice"
+
+	vHuman := Evaluate(cfg, rep)
+	if vHuman.Outcome != evidence.OutcomeCleared {
+		t.Fatalf("expected cleared, got %v", vHuman.Outcome)
+	}
+}

@@ -11,7 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Review workflow supporting challenge states: unreviewed, confirmed, rejected, accepted-risk, fixed and unresolved.
 - Persistence for review decisions and accepted risks keyed by finding fingerprint across runs.
 - `clearance_record_review` and `clearance_get_findings` tools available over MCP and CLI subcommands `record-review` and `findings`.
-- `human_required_classes` configuration preventing agent/tool reviewers from clearing specific high-value findings without human override.
+- `human_required_classes` configuration preventing agent/tool reviewers from clearing (rejecting, accepting risk, or marking fixed) specific high-value findings without human override.
 - Public product specification, architecture and build-to-release roadmap.
 - Contributor, security and community foundations.
 - Versioned JSON Schemas for scan reports (`schemas/report.schema.json`) and clearance policy configuration (`schemas/clearance.schema.json`).
