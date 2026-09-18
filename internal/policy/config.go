@@ -47,10 +47,17 @@ type AcceptedRiskRule struct {
 	Owner     string `json:"owner,omitempty" yaml:"owner,omitempty"`
 }
 
+type HumanRequiredClass struct {
+	RuleID   string            `json:"rule_id,omitempty" yaml:"rule_id,omitempty"`
+	Tool     string            `json:"tool,omitempty" yaml:"tool,omitempty"`
+	Severity evidence.Severity `json:"severity,omitempty" yaml:"severity,omitempty"`
+}
+
 type PolicyRules struct {
-	BlockingSeverities []evidence.Severity `json:"blocking_severities" yaml:"blocking_severities"`
-	AllowDirty         bool                `json:"allow_dirty" yaml:"allow_dirty"`
-	AcceptedRisks      []AcceptedRiskRule  `json:"accepted_risks" yaml:"accepted_risks"`
+	BlockingSeverities   []evidence.Severity  `json:"blocking_severities" yaml:"blocking_severities"`
+	AllowDirty           bool                 `json:"allow_dirty" yaml:"allow_dirty"`
+	AcceptedRisks        []AcceptedRiskRule   `json:"accepted_risks" yaml:"accepted_risks"`
+	HumanRequiredClasses []HumanRequiredClass `json:"human_required_classes" yaml:"human_required_classes"`
 }
 
 type CommandRule struct {
@@ -133,8 +140,9 @@ func DefaultConfig() Config {
 				evidence.SeverityCritical,
 				evidence.SeverityHigh,
 			},
-			AllowDirty:    false,
-			AcceptedRisks: []AcceptedRiskRule{},
+			AllowDirty:           false,
+			AcceptedRisks:        []AcceptedRiskRule{},
+			HumanRequiredClasses: []HumanRequiredClass{},
 		},
 		Commands: CommandsConfig{
 			Required: []CommandRule{},
