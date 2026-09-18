@@ -279,6 +279,19 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	// 5. Correlate and deduplicate findings across runs
 	correlate.CorrelateReport(&report)
 
+	if reviews, err := st.GetReviews(); err == nil && len(reviews) > 0 {
+		for i := range report.Findings {
+			if rec, ok := reviews[report.Findings[i].Fingerprint]; ok {
+				report.Findings[i].ChallengeStatus = rec.ChallengeStatus
+				report.Findings[i].ChallengeRationale = rec.Reason
+				report.Findings[i].Reviewer = evidence.Reviewer{
+					Type:     rec.ReviewerType,
+					Identity: rec.ReviewerIdentity,
+				}
+			}
+		}
+	}
+
 	// 6. Apply deterministic policy verdict
 	// Deriving the required set from the runs that happened makes the
 	// requirement circular: whatever ran is what was required, so nothing can

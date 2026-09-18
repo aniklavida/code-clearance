@@ -105,6 +105,7 @@ Every finding records its source adapter, tool version, rule, original and norma
 - Repository-defined commands cross a trust/approval boundary.
 - Third-party binaries are version-recorded and downloads are verified.
 - Skipped, unavailable and failed checks remain visible.
+- Human-required classes (`human_required_classes` in policy config by rule ID, tool, or severity) guarantee that findings matching these criteria cannot be cleared (e.g. rejected, accepted-risk, or fixed) by an agent or tool reviewer. An agent attempting to clear such findings will leave the blocking policy unchanged.
 
 ## Explicitly outside v1.0
 

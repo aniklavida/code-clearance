@@ -93,6 +93,22 @@
             },
             "additionalProperties": false
           }
+        },
+        "human_required_classes": {
+          "type": "array",
+          "description": "Rules that cannot be cleared by an agent/tool without human review.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rule_id": { "type": "string" },
+              "tool": { "type": "string" },
+              "severity": {
+                "type": "string",
+                "enum": ["critical", "high", "medium", "low"]
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

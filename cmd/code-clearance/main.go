@@ -29,6 +29,10 @@ func main() {
 	switch os.Args[1] {
 	case "scan":
 		os.Exit(runScan(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "record-review":
+		os.Exit(runRecordReview(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "findings":
+		os.Exit(runFindings(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "serve":
 		os.Exit(runServe(ctx, os.Args[2:], os.Stderr))
 	case "version", "--version", "-v":
@@ -51,8 +55,10 @@ Usage:
   code-clearance <command> [flags] [dir]
 
 Commands:
-  scan    Run clearance scanners and report evidence
-  serve   Serve clearance MCP tools over stdio
+  scan            Run clearance scanners and report evidence
+  record-review   Record a review decision for a finding
+  findings        Get current findings and review states
+  serve           Serve clearance MCP tools over stdio
   version Print the version, and whether this build is signed
 `)
 }
@@ -108,5 +114,67 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "mcp server error: %v\n", err)
 		return 1
 	}
+	return 0
+}
+
+func runRecordReview(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("record-review", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", ".", "target directory")
+	fp := fs.String("fingerprint", "", "finding fingerprint")
+	status := fs.String("status", "", "challenge status (e.g. rejected, accepted-risk)")
+	reason := fs.String("reason", "", "rationale for the review")
+	reviewerType := fs.String("reviewer-type", "human", "type of reviewer (human, agent, tool)")
+	identity := fs.String("identity", "", "reviewer identity")
+	expires := fs.String("expires-at", "", "optional expiry for accepted-risk")
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	if *fp == "" || *status == "" {
+		fmt.Fprintf(stderr, "error: fingerprint and status are required\n")
+		return 2
+	}
+
+	err := app.RecordReview(ctx, app.RecordReviewArgs{
+		TargetDir:        *dir,
+		Fingerprint:      *fp,
+		ChallengeStatus:  *status,
+		Reason:           *reason,
+		ReviewerType:     *reviewerType,
+		ReviewerIdentity: *identity,
+		ExpiresAt:        *expires,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "failed to record review: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "Review recorded successfully")
+	return 0
+}
+
+func runFindings(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("findings", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", ".", "target directory")
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	findings, err := app.GetFindings(ctx, app.GetFindingsArgs{TargetDir: *dir})
+	if err != nil {
+		fmt.Fprintf(stderr, "failed to get findings: %v\n", err)
+		return 1
+	}
+
+	data, err := json.MarshalIndent(findings, "", "  ")
+	if err != nil {
+		fmt.Fprintf(stderr, "json marshal error: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, string(data))
 	return 0
 }

@@ -184,6 +184,9 @@ type Finding struct {
 	// ChallengeStatus tracks triage state.
 	ChallengeStatus ChallengeStatus `json:"challenge_status"`
 
+	// ChallengeRationale records the reason behind the challenge verdict.
+	ChallengeRationale string `json:"challenge_rationale,omitempty"`
+
 	// Reviewer records the reviewer type and identity.
 	Reviewer Reviewer `json:"reviewer"`
 

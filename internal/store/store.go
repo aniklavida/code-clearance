@@ -3,6 +3,7 @@ package store
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -156,4 +157,75 @@ func (s *Store) GetArtifact(ref evidence.ArtifactReference) ([]byte, error) {
 		return nil, fmt.Errorf("read raw artifact %s: %w", path, err)
 	}
 	return data, nil
+}
+
+type ReviewRecord struct {
+	ChallengeStatus  evidence.ChallengeStatus `json:"challenge_status"`
+	ReviewerType     evidence.ReviewerType    `json:"reviewer_type"`
+	ReviewerIdentity string                   `json:"reviewer_identity"`
+	Reason           string                   `json:"reason"`
+	ExpiresAt        string                   `json:"expires_at,omitempty"`
+	Timestamp        string                   `json:"timestamp"`
+}
+
+func (s *Store) SaveReview(fingerprint string, record ReviewRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	reviewsDir := filepath.Join(s.rootDir, "reviews")
+	if err := os.MkdirAll(reviewsDir, 0o755); err != nil {
+		return fmt.Errorf("create reviews directory: %w", err)
+	}
+
+	finalPath := filepath.Join(reviewsDir, fingerprint+".json")
+	tmpPath := finalPath + ".tmp"
+
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal review record: %w", err)
+	}
+
+	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+		return fmt.Errorf("write temp review %s: %w", tmpPath, err)
+	}
+
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("commit review %s: %w", finalPath, err)
+	}
+
+	return nil
+}
+
+func (s *Store) GetReviews() (map[string]ReviewRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	reviewsDir := filepath.Join(s.rootDir, "reviews")
+	entries, err := os.ReadDir(reviewsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return make(map[string]ReviewRecord), nil
+		}
+		return nil, fmt.Errorf("read reviews directory: %w", err)
+	}
+
+	reviews := make(map[string]ReviewRecord)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(reviewsDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var record ReviewRecord
+		if err := json.Unmarshal(data, &record); err != nil {
+			continue
+		}
+		fingerprint := strings.TrimSuffix(entry.Name(), ".json")
+		reviews[fingerprint] = record
+	}
+	return reviews, nil
 }

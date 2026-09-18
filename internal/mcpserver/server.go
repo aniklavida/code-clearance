@@ -41,6 +41,16 @@ func NewServer() *mcp.Server {
 			"target directory and return normalized, evidence-backed findings bound to commit and tree state.",
 	}, RunClearanceScan)
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clearance_record_review",
+		Description: "Record a review decision for a specific finding by fingerprint.",
+	}, RecordReview)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clearance_get_findings",
+		Description: "Get the list of current findings with their evidence and review states.",
+	}, GetFindings)
+
 	return server
 }
 
@@ -55,6 +65,26 @@ func RunClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanAr
 		return nil, report, err
 	}
 	return nil, report, nil
+}
+
+func RecordReview(ctx context.Context, req *mcp.CallToolRequest, args app.RecordReviewArgs) (*mcp.CallToolResult, string, error) {
+	// The MCP tool surface is only ever invoked by an agent, never directly by a human.
+	// Force the reviewer type to agent so that agents cannot bypass human_required_classes
+	// by claiming to be a human reviewer.
+	args.ReviewerType = string(evidence.ReviewerAgent)
+	err := app.RecordReview(ctx, args)
+	if err != nil {
+		return nil, "", err
+	}
+	return nil, "Review recorded successfully", nil
+}
+
+func GetFindings(ctx context.Context, req *mcp.CallToolRequest, args app.GetFindingsArgs) (*mcp.CallToolResult, []evidence.Finding, error) {
+	findings, err := app.GetFindings(ctx, args)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, findings, nil
 }
 
 // ServeStdio runs the MCP server over standard I/O until the context is cancelled

@@ -237,8 +237,30 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	}
 
 	for _, f := range allFindings {
-		// If finding has rejected or fixed status, it does not block
-		if f.ChallengeStatus == evidence.ChallengeRejected || f.ChallengeStatus == evidence.ChallengeFixed {
+		isHumanReq := false
+		for _, req := range cfg.Policy.HumanRequiredClasses {
+			match := true
+			if req.RuleID != "" && req.RuleID != f.RuleID {
+				match = false
+			}
+			if req.Tool != "" && req.Tool != f.Tool {
+				match = false
+			}
+			if req.Severity != "" && req.Severity != f.NormalizedSeverity {
+				match = false
+			}
+			if match {
+				isHumanReq = true
+				break
+			}
+		}
+
+		reviewerIsHuman := f.Reviewer.Type == evidence.ReviewerHuman
+
+		hasOverrideStatus := f.ChallengeStatus == evidence.ChallengeRejected || f.ChallengeStatus == evidence.ChallengeAcceptedRisk || f.ChallengeStatus == evidence.ChallengeFixed
+		ignoreOverride := isHumanReq && !reviewerIsHuman && hasOverrideStatus
+
+		if !ignoreOverride && (f.ChallengeStatus == evidence.ChallengeRejected || f.ChallengeStatus == evidence.ChallengeFixed) {
 			continue
 		}
 
@@ -267,15 +289,20 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 		}
 
 		if acceptedRule == nil && f.ChallengeStatus == evidence.ChallengeAcceptedRisk {
-			// Finding was flagged as accepted risk without a specific config entry
-			rule := AcceptedRiskRule{
-				FindingID: f.ID,
-				RuleID:    f.RuleID,
-				Tool:      f.Tool,
-				Reason:    "accepted during review challenge",
-				ExpiresAt: "9999-12-31T23:59:59Z",
+			if !ignoreOverride {
+				// Finding was flagged as accepted risk without a specific config entry
+				rule := AcceptedRiskRule{
+					FindingID: f.ID,
+					RuleID:    f.RuleID,
+					Tool:      f.Tool,
+					Reason:    "accepted during review challenge",
+					ExpiresAt: "9999-12-31T23:59:59Z",
+				}
+				if f.Reviewer.Identity != "" {
+					rule.Owner = string(f.Reviewer.Type) + ":" + f.Reviewer.Identity
+				}
+				acceptedRule = &rule
 			}
-			acceptedRule = &rule
 		}
 
 		if acceptedRule != nil {
