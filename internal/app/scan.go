@@ -106,7 +106,8 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	e.mu.RUnlock()
 
 	// 3. Parallel Execution: run adapters and repository commands concurrently
-	maxConcurrency := cfg.Limits.MaxConcurrency
+	prof := cfg.ActiveProfile(opts.Scope)
+	maxConcurrency := prof.Limits.MaxConcurrency
 	if maxConcurrency <= 0 {
 		maxConcurrency = 4
 	}

@@ -25,6 +25,8 @@ type EvaluationVerdict struct {
 //  2. Evaluation is completely deterministic: neither ordering of runs/findings
 //     nor any wall-clock time lookup influences the verdict.
 func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
+	prof := cfg.ActiveProfile(rep.Coverage.Scope)
+
 	verdict := EvaluationVerdict{
 		BlockingFindings: []string{},
 		ResidualRisk:     []evidence.ResidualRiskItem{},
@@ -105,8 +107,8 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	// 2. Check required adapters.
 	// Invariant: An unavailable required adapter must produce Incomplete, never a pass.
 	// Check sorted required adapters list for deterministic error messaging.
-	reqAdapters := make([]string, len(cfg.Adapters.Required))
-	copy(reqAdapters, cfg.Adapters.Required)
+	reqAdapters := make([]string, len(prof.Adapters.Required))
+	copy(reqAdapters, prof.Adapters.Required)
 	sort.Strings(reqAdapters)
 
 	var missingRequired []string
@@ -177,7 +179,7 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	}
 
 	// 3. Working tree check
-	if !cfg.Policy.AllowDirty && rep.Target.Dirty {
+	if !prof.AllowDirty && rep.Target.Dirty {
 		verdict.Outcome = evidence.OutcomeBlocked
 		verdict.Reason = "working tree has uncommitted modifications and allow_dirty is false"
 		sortUncovered(&verdict.Uncovered)
@@ -213,7 +215,7 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	// Index accepted risk rules
 	acceptedByFindingID := make(map[string]AcceptedRiskRule)
 	acceptedByRuleID := make(map[string]AcceptedRiskRule)
-	for _, ar := range cfg.Policy.AcceptedRisks {
+	for _, ar := range prof.Policy.AcceptedRisks {
 		if ar.FindingID != "" {
 			acceptedByFindingID[ar.FindingID] = ar
 		}
@@ -232,13 +234,13 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	}
 
 	blockingSeverityMap := make(map[evidence.Severity]bool)
-	for _, s := range cfg.Policy.BlockingSeverities {
+	for _, s := range prof.Policy.BlockingSeverities {
 		blockingSeverityMap[s] = true
 	}
 
 	for _, f := range allFindings {
 		isHumanReq := false
-		for _, req := range cfg.Policy.HumanRequiredClasses {
+		for _, req := range prof.Policy.HumanRequiredClasses {
 			match := true
 			if req.RuleID != "" && req.RuleID != f.RuleID {
 				match = false
