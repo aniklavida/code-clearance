@@ -2,11 +2,11 @@ package mcpserver
 
 import (
 	"context"
+	"github.com/aniklavida/code-clearance/internal/store"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
-	"os/exec"
-	"github.com/aniklavida/code-clearance/internal/store"
 
 	"github.com/aniklavida/code-clearance/internal/app"
 	"github.com/aniklavida/code-clearance/internal/evidence"
@@ -76,8 +76,14 @@ func TestUnattendedAgentLoopReal(t *testing.T) {
 
 	os.WriteFile(filepath.Join(tmpDir, ".gitleaksignore"), []byte(".clearance/"), 0644)
 
-	os.WriteFile(filepath.Join(tmpDir, "secret.go"), []byte("package main\n\nconst token = \"-----BEGIN RSA PRIVATE KEY-----\nMIICXAIBAAKBgQCqGKukO1De7zhZj6+\"\n"), 0644)
-	
+	dummyKey := `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAr7ULYO1SLKbXGQpPed/j8GagMnAKymjiN83gyteEOsAAAAKAERs/DBEbP
+wwAAAAtzc2gtZWQyNTUxOQAAACAr7ULYO1SLKbXGQpPed/j8GagMnAKymjiN83gyteEOsA
+AAAEAx5v50Hayo1sFv5+40AX4g7gAEGUAWsHbx2EPJwB73LCvtQtg7VIsptcZCk953+PwZ
+qAycArKaOI3zeDK14Q6wAAAAF2FuaWtATWRzLU1hYy1taW5pLmxvY2FsAQIDBAUG
+-----END OPENSSH PRIVATE KEY-----`
+	os.WriteFile(filepath.Join(tmpDir, "secret.go"), []byte("package main\n\nconst token = `\n"+dummyKey+"\n`\n"), 0644)
 
 	_, rep1, err := ClearanceRun(ctx, nil, ClearanceRunArgs{
 		TargetDir: tmpDir,
@@ -110,8 +116,6 @@ func TestUnattendedAgentLoopReal(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, ".gitleaksignore"), []byte(".clearance/"), 0644)
 
 	os.WriteFile(filepath.Join(tmpDir, "secret.go"), []byte("package main\n\nconst token = \"\"\n"), 0644)
-	
-	
 
 	os.RemoveAll(filepath.Join(tmpDir, ".clearance", "runs"))
 
@@ -124,7 +128,9 @@ func TestUnattendedAgentLoopReal(t *testing.T) {
 	}
 
 	if rep2.Outcome != evidence.OutcomeCleared {
-		t.Logf("rep1 FP: %s, rep2 FP: %s", fp, rep2.Findings[0].Fingerprint); t.Logf("Finding: %+v", rep2.Findings[0]); t.Fatalf("Expected Cleared, got %s. Reason: %s", rep2.Outcome, rep2.Reason)
+		t.Logf("rep1 FP: %s, rep2 FP: %s", fp, rep2.Findings[0].Fingerprint)
+		t.Logf("Finding: %+v", rep2.Findings[0])
+		t.Fatalf("Expected Cleared, got %s. Reason: %s", rep2.Outcome, rep2.Reason)
 	}
 
 	_, rep3, err := ClearanceReport(ctx, nil, ClearanceReportArgs{TargetDir: tmpDir})
@@ -134,16 +140,16 @@ func TestUnattendedAgentLoopReal(t *testing.T) {
 	if rep3.Outcome != evidence.OutcomeCleared {
 		t.Fatalf("Expected reported outcome Cleared, got %s", rep3.Outcome)
 	}
-	
+
 	// Test regression probe: The agent MUST NOT launder its reviewer type
 	// the `RecordReview` forces it to be `agent`. Let's verify it actually wrote `agent`.
 	st, _ := store.New(filepath.Join(tmpDir, ".clearance"))
 	reviews, _ := st.GetReviews()
 	rev, ok := reviews[fp]
 	if !ok {
-	    t.Fatalf("Review missing for %s", fp)
+		t.Fatalf("Review missing for %s", fp)
 	}
 	if string(rev.ReviewerType) != "agent" {
-	    t.Fatalf("ReviewerType was %s, expected agent - laundering occurred!", rev.ReviewerType)
+		t.Fatalf("ReviewerType was %s, expected agent - laundering occurred!", rev.ReviewerType)
 	}
 }

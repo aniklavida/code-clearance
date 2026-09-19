@@ -132,18 +132,12 @@ func DefaultConfig() Config {
 		},
 		Scopes: ScopesConfig{
 			Quick: ScopeRule{
-				AdaptersLegacy:   []string{"gitleaks", "osv-scanner"},
-				CommandsLegacy:   []string{},
 				AllowDirtyLegacy: boolPtr(true),
 			},
 			Full: ScopeRule{
-				AdaptersLegacy:   []string{"gitleaks", "osv-scanner"},
-				CommandsLegacy:   []string{},
 				AllowDirtyLegacy: boolPtr(false),
 			},
 			Release: ScopeRule{
-				AdaptersLegacy:   []string{"gitleaks", "osv-scanner"},
-				CommandsLegacy:   []string{},
 				AllowDirtyLegacy: boolPtr(false),
 			},
 		},

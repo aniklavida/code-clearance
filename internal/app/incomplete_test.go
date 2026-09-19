@@ -96,7 +96,6 @@ func TestEngine_DeclaredRequirementIsNotOverwrittenByWhatHappenedToRun(t *testin
 	// If the engine rewrites Required from the runs that occurred, this passes
 	// as Cleared and the requirement means nothing.
 	cfg := policy.DefaultConfig()
-	cfg.Scopes.Quick.AdaptersLegacy = nil
 	cfg.Adapters.Required = []string{"never-supplied"}
 
 	engine := NewEngine(func(ctx context.Context, targetDir string) []evidence.RunOutcome {

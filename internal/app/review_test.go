@@ -137,7 +137,6 @@ func TestConstraint_AgentCannotClearHumanRequiredClass(t *testing.T) {
 	// Add human required class config
 	cfg := policy.DefaultConfig()
 	cfg.Adapters.Required = []string{"dummy"}
-	cfg.Scopes.Quick.AdaptersLegacy = []string{"dummy"}
 	cfg.Policy.HumanRequiredClasses = []policy.HumanRequiredClass{
 		{Tool: "dummy", Severity: evidence.SeverityHigh},
 	}

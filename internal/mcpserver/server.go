@@ -10,12 +10,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"encoding/json"
 	_ "github.com/aniklavida/code-clearance/internal/adapters"
 	"github.com/aniklavida/code-clearance/internal/app"
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/aniklavida/code-clearance/internal/evidence"
 	"github.com/aniklavida/code-clearance/internal/policy"
@@ -59,7 +58,6 @@ func NewServer() *mcp.Server {
 		Description: "Get the list of current findings with their evidence and review states.",
 	}, GetFindings)
 
-	
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "clearance_run",
 		Description: "Run the full clearance pipeline (scan+evaluate) using the named profile and clearance.json config.",
@@ -72,7 +70,6 @@ func NewServer() *mcp.Server {
 
 	return server
 }
-
 
 // RunClearanceScan is the tool handler delegating execution to the shared core.
 func RunClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanArgs) (*mcp.CallToolResult, ScanOutput, error) {
@@ -148,7 +145,8 @@ func ClearanceRun(ctx context.Context, req *mcp.CallToolRequest, args ClearanceR
 		if err == nil {
 			data, _ := json.Marshal(report)
 			session.SaveArtifact("clearance_report", "json", data)
-			// No Commit method, just saved
+			// Write a stable pointer to this run so ClearanceReport finds it exactly
+			os.WriteFile(filepath.Join(st.RootDir(), "latest-run.json"), []byte(session.RunID()), 0644)
 		}
 	}
 
@@ -164,24 +162,15 @@ func ClearanceReport(ctx context.Context, req *mcp.CallToolRequest, args Clearan
 	if err != nil {
 		return nil, evidence.Report{}, err
 	}
+
+	pointerPath := filepath.Join(st.RootDir(), "latest-run.json")
+	latestBytes, err := os.ReadFile(pointerPath)
+	if err != nil {
+		return nil, evidence.Report{}, os.ErrNotExist
+	}
+	latest := string(latestBytes)
+
 	runsDir := filepath.Join(st.RootDir(), "runs")
-	entries, err := os.ReadDir(runsDir)
-	if err != nil || len(entries) == 0 {
-		return nil, evidence.Report{}, os.ErrNotExist
-	}
-
-	var latest string
-	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), "run-") {
-			if e.Name() > latest {
-				latest = e.Name()
-			}
-		}
-	}
-	if latest == "" {
-		return nil, evidence.Report{}, os.ErrNotExist
-	}
-
 	reportPath := filepath.Join(runsDir, latest, "artifacts", "clearance_report.json")
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
