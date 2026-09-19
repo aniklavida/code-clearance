@@ -1,7 +1,9 @@
 package policy
 
 import (
+	"encoding/json"
 	"github.com/aniklavida/code-clearance/internal/evidence"
+	"os"
 )
 
 // Config models the clearance.yaml configuration file.
@@ -27,9 +29,19 @@ type PathsConfig struct {
 }
 
 type ScopeRule struct {
-	Adapters   []string `json:"adapters" yaml:"adapters"`
-	Commands   []string `json:"commands" yaml:"commands"`
-	AllowDirty bool     `json:"allow_dirty" yaml:"allow_dirty"`
+	AdaptersRaw json.RawMessage `json:"adapters,omitempty" yaml:"adapters,omitempty"`
+	CommandsRaw json.RawMessage `json:"commands,omitempty" yaml:"commands,omitempty"`
+	AllowDirty  *bool           `json:"allow_dirty,omitempty" yaml:"allow_dirty,omitempty"`
+
+	// Set by DefaultConfig
+	AdaptersLegacy   []string `json:"-" yaml:"-"`
+	CommandsLegacy   []string `json:"-" yaml:"-"`
+	AllowDirtyLegacy *bool    `json:"-" yaml:"-"`
+
+	Paths    *PathsConfig    `json:"paths,omitempty" yaml:"paths,omitempty"`
+	Policy   *PolicyRules    `json:"policy,omitempty" yaml:"policy,omitempty"`
+	Limits   *LimitsConfig   `json:"limits,omitempty" yaml:"limits,omitempty"`
+	Outcomes *OutcomesConfig `json:"outcomes,omitempty" yaml:"outcomes,omitempty"`
 }
 
 type ScopesConfig struct {
@@ -120,19 +132,19 @@ func DefaultConfig() Config {
 		},
 		Scopes: ScopesConfig{
 			Quick: ScopeRule{
-				Adapters:   []string{"gitleaks", "osv-scanner"},
-				Commands:   []string{},
-				AllowDirty: true,
+				AdaptersLegacy:   []string{"gitleaks", "osv-scanner"},
+				CommandsLegacy:   []string{},
+				AllowDirtyLegacy: boolPtr(true),
 			},
 			Full: ScopeRule{
-				Adapters:   []string{"gitleaks", "osv-scanner"},
-				Commands:   []string{},
-				AllowDirty: false,
+				AdaptersLegacy:   []string{"gitleaks", "osv-scanner"},
+				CommandsLegacy:   []string{},
+				AllowDirtyLegacy: boolPtr(false),
 			},
 			Release: ScopeRule{
-				Adapters:   []string{"gitleaks", "osv-scanner"},
-				Commands:   []string{},
-				AllowDirty: false,
+				AdaptersLegacy:   []string{"gitleaks", "osv-scanner"},
+				CommandsLegacy:   []string{},
+				AllowDirtyLegacy: boolPtr(false),
 			},
 		},
 		Policy: PolicyRules{
@@ -172,4 +184,121 @@ func DefaultConfig() Config {
 			},
 		},
 	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// Profile represents a fully resolved configuration profile for a specific scope.
+type Profile struct {
+	Name       string
+	Adapters   AdaptersConfig
+	Paths      PathsConfig
+	Policy     PolicyRules
+	Commands   CommandsConfig
+	Limits     LimitsConfig
+	Outcomes   OutcomesConfig
+	AllowDirty bool
+}
+
+// ActiveProfile resolves the active profile fields for a given scope,
+// falling back to global fields where not set.
+func (c Config) ActiveProfile(scopeName string) Profile {
+	p := Profile{
+		Name:       scopeName,
+		Adapters:   c.Adapters,
+		Paths:      c.Paths,
+		Policy:     c.Policy,
+		Commands:   c.Commands,
+		Limits:     c.Limits,
+		Outcomes:   c.Outcomes,
+		AllowDirty: c.Policy.AllowDirty,
+	}
+
+	var sr *ScopeRule
+	switch scopeName {
+	case "quick":
+		sr = &c.Scopes.Quick
+	case "full":
+		sr = &c.Scopes.Full
+	case "release":
+		sr = &c.Scopes.Release
+	}
+
+	if sr == nil {
+		return p
+	}
+
+	if sr.Paths != nil {
+		p.Paths = *sr.Paths
+	}
+	if sr.Policy != nil {
+		p.Policy = *sr.Policy
+		// If the profile sets its own Policy, we should also update AllowDirty
+		p.AllowDirty = sr.Policy.AllowDirty
+	}
+	if sr.Limits != nil {
+		p.Limits = *sr.Limits
+	}
+	if sr.Outcomes != nil {
+		p.Outcomes = *sr.Outcomes
+	}
+
+	if sr.AllowDirty != nil {
+		p.AllowDirty = *sr.AllowDirty
+	} else if sr.AllowDirtyLegacy != nil {
+		p.AllowDirty = *sr.AllowDirtyLegacy
+	}
+
+	// Resolve Adapters
+	if len(sr.AdaptersRaw) > 0 {
+		var arr []string
+		if err := json.Unmarshal(sr.AdaptersRaw, &arr); err == nil {
+			p.Adapters = AdaptersConfig{Required: arr}
+		} else {
+			var obj AdaptersConfig
+			if err := json.Unmarshal(sr.AdaptersRaw, &obj); err == nil {
+				p.Adapters = obj
+			}
+		}
+	} else if len(sr.AdaptersLegacy) > 0 {
+		p.Adapters = AdaptersConfig{Required: sr.AdaptersLegacy}
+	}
+
+	// Resolve Commands
+	if len(sr.CommandsRaw) > 0 {
+		var arr []string
+		if err := json.Unmarshal(sr.CommandsRaw, &arr); err == nil {
+			var rules []CommandRule
+			for _, c := range arr {
+				rules = append(rules, CommandRule{Name: c, Run: c})
+			}
+			p.Commands = CommandsConfig{Required: rules}
+		} else {
+			var obj CommandsConfig
+			if err := json.Unmarshal(sr.CommandsRaw, &obj); err == nil {
+				p.Commands = obj
+			}
+		}
+	} else if len(sr.CommandsLegacy) > 0 {
+		var rules []CommandRule
+		for _, c := range sr.CommandsLegacy {
+			rules = append(rules, CommandRule{Name: c, Run: c})
+		}
+		p.Commands = CommandsConfig{Required: rules}
+	}
+
+	return p
+}
+
+// Load loads a clearance configuration from a JSON file.
+func Load(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	var c Config
+	if err := json.Unmarshal(data, &c); err != nil {
+		return Config{}, err
+	}
+	return c, nil
 }

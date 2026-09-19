@@ -12,7 +12,15 @@ import (
 
 	_ "github.com/aniklavida/code-clearance/internal/adapters"
 	"github.com/aniklavida/code-clearance/internal/app"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/aniklavida/code-clearance/internal/evidence"
+	"github.com/aniklavida/code-clearance/internal/policy"
+	"github.com/aniklavida/code-clearance/internal/schema"
+	"github.com/aniklavida/code-clearance/internal/store"
 )
 
 // ScanArgs is the input schema for the run_clearance_scan tool. The SDK's
@@ -51,8 +59,20 @@ func NewServer() *mcp.Server {
 		Description: "Get the list of current findings with their evidence and review states.",
 	}, GetFindings)
 
+	
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clearance_run",
+		Description: "Run the full clearance pipeline (scan+evaluate) using the named profile and clearance.json config.",
+	}, ClearanceRun)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clearance_report",
+		Description: "Re-render the most recently persisted run's report.",
+	}, ClearanceReport)
+
 	return server
 }
+
 
 // RunClearanceScan is the tool handler delegating execution to the shared core.
 func RunClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanArgs) (*mcp.CallToolResult, ScanOutput, error) {
@@ -92,4 +112,86 @@ func GetFindings(ctx context.Context, req *mcp.CallToolRequest, args app.GetFind
 func ServeStdio(ctx context.Context) error {
 	server := NewServer()
 	return server.Run(ctx, &mcp.StdioTransport{})
+}
+
+type ClearanceRunArgs struct {
+	TargetDir string `json:"target_dir" jsonschema:"absolute path to the directory to scan"`
+	Profile   string `json:"profile,omitempty" jsonschema:"optional profile to run (quick, full, release)"`
+}
+
+func ClearanceRun(ctx context.Context, req *mcp.CallToolRequest, args ClearanceRunArgs) (*mcp.CallToolResult, evidence.Report, error) {
+	scope := args.Profile
+	if scope == "" {
+		scope = "quick"
+	}
+
+	opts := app.ScanOptions{Scope: scope}
+
+	cfgPath := filepath.Join(args.TargetDir, "clearance.json")
+	if data, err := os.ReadFile(cfgPath); err == nil {
+		if valErr := schema.ValidateClearance(data); valErr != nil {
+			return nil, evidence.Report{}, valErr
+		}
+		if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
+			opts.Config = &cfg
+		}
+	}
+
+	report, err := app.ScanWithOptions(ctx, args.TargetDir, opts)
+	if err != nil {
+		return nil, evidence.Report{}, err
+	}
+
+	st, err := store.New(filepath.Join(args.TargetDir, ".clearance"))
+	if err == nil {
+		session, err := st.CreateRun("")
+		if err == nil {
+			data, _ := json.Marshal(report)
+			session.SaveArtifact("clearance_report", "json", data)
+			// No Commit method, just saved
+		}
+	}
+
+	return nil, report, nil
+}
+
+type ClearanceReportArgs struct {
+	TargetDir string `json:"target_dir" jsonschema:"absolute path to the project directory"`
+}
+
+func ClearanceReport(ctx context.Context, req *mcp.CallToolRequest, args ClearanceReportArgs) (*mcp.CallToolResult, evidence.Report, error) {
+	st, err := store.New(filepath.Join(args.TargetDir, ".clearance"))
+	if err != nil {
+		return nil, evidence.Report{}, err
+	}
+	runsDir := filepath.Join(st.RootDir(), "runs")
+	entries, err := os.ReadDir(runsDir)
+	if err != nil || len(entries) == 0 {
+		return nil, evidence.Report{}, os.ErrNotExist
+	}
+
+	var latest string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "run-") {
+			if e.Name() > latest {
+				latest = e.Name()
+			}
+		}
+	}
+	if latest == "" {
+		return nil, evidence.Report{}, os.ErrNotExist
+	}
+
+	reportPath := filepath.Join(runsDir, latest, "artifacts", "clearance_report.json")
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		return nil, evidence.Report{}, err
+	}
+
+	var rep evidence.Report
+	if err := json.Unmarshal(data, &rep); err != nil {
+		return nil, evidence.Report{}, err
+	}
+
+	return nil, rep, nil
 }

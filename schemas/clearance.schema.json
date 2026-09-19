@@ -17,20 +17,187 @@
   "properties": {
     "version": {
       "type": "string",
-      "enum": ["v1", "1.0.0"]
+      "enum": [
+        "v1",
+        "1.0.0"
+      ]
     },
     "adapters": {
       "type": "object",
       "description": "Required and optional adapters for clearance.",
-      "required": ["required", "optional"],
+      "required": [
+        "required",
+        "optional"
+      ],
       "properties": {
         "required": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "optional": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "$ref": "#/$defs/paths"
+    },
+    "scopes": {
+      "type": "object",
+      "description": "Execution scopes and their adapter/command bindings.",
+      "required": [
+        "quick",
+        "full",
+        "release"
+      ],
+      "properties": {
+        "quick": {
+          "$ref": "#/$defs/scope_rule"
+        },
+        "full": {
+          "$ref": "#/$defs/scope_rule"
+        },
+        "release": {
+          "$ref": "#/$defs/scope_rule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "commands": {
+      "type": "object",
+      "description": "Project-defined commands to run during clearance.",
+      "required": [
+        "required",
+        "optional"
+      ],
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/command_rule"
+          }
+        },
+        "optional": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/command_rule"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    },
+    "outcomes": {
+      "$ref": "#/$defs/outcomes"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "scope_rule": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "adapters": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "required": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "optional": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "commands": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "required": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/command_rule"
+                  }
+                },
+                "optional": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/command_rule"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "allow_dirty": {
+          "type": "boolean"
+        },
+        "paths": {
+          "$ref": "#/$defs/paths"
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        },
+        "outcomes": {
+          "$ref": "#/$defs/outcomes"
+        }
+      },
+      "additionalProperties": false
+    },
+    "command_rule": {
+      "type": "object",
+      "required": [
+        "name",
+        "run"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "run": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false
@@ -38,40 +205,45 @@
     "paths": {
       "type": "object",
       "description": "Path rules for file inclusion and exclusion.",
-      "required": ["include", "exclude"],
+      "required": [
+        "include",
+        "exclude"
+      ],
       "properties": {
         "include": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "exclude": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
-      },
-      "additionalProperties": false
-    },
-    "scopes": {
-      "type": "object",
-      "description": "Execution scopes and their adapter/command bindings.",
-      "required": ["quick", "full", "release"],
-      "properties": {
-        "quick": { "$ref": "#/$defs/scope_rule" },
-        "full": { "$ref": "#/$defs/scope_rule" },
-        "release": { "$ref": "#/$defs/scope_rule" }
       },
       "additionalProperties": false
     },
     "policy": {
       "type": "object",
       "description": "Blocking rules, risk acceptance, and dirty-tree permissions.",
-      "required": ["blocking_severities", "allow_dirty", "accepted_risks"],
+      "required": [
+        "blocking_severities",
+        "allow_dirty",
+        "accepted_risks"
+      ],
       "properties": {
         "blocking_severities": {
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"]
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
           }
         },
         "allow_dirty": {
@@ -82,14 +254,29 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["reason", "expires_at"],
+            "required": [
+              "reason",
+              "expires_at"
+            ],
             "properties": {
-              "finding_id": { "type": "string" },
-              "rule_id": { "type": "string" },
-              "tool": { "type": "string" },
-              "reason": { "type": "string" },
-              "expires_at": { "type": "string" },
-              "owner": { "type": "string" }
+              "finding_id": {
+                "type": "string"
+              },
+              "rule_id": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "expires_at": {
+                "type": "string"
+              },
+              "owner": {
+                "type": "string"
+              }
             },
             "additionalProperties": false
           }
@@ -100,11 +287,20 @@
           "items": {
             "type": "object",
             "properties": {
-              "rule_id": { "type": "string" },
-              "tool": { "type": "string" },
+              "rule_id": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
               "severity": {
                 "type": "string",
-                "enum": ["critical", "high", "medium", "low"]
+                "enum": [
+                  "critical",
+                  "high",
+                  "medium",
+                  "low"
+                ]
               }
             },
             "additionalProperties": false
@@ -113,26 +309,13 @@
       },
       "additionalProperties": false
     },
-    "commands": {
-      "type": "object",
-      "description": "Project-defined commands to run during clearance.",
-      "required": ["required", "optional"],
-      "properties": {
-        "required": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/command_rule" }
-        },
-        "optional": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/command_rule" }
-        }
-      },
-      "additionalProperties": false
-    },
     "limits": {
       "type": "object",
       "description": "Execution timeouts and concurrency bounds.",
-      "required": ["timeout_seconds", "max_concurrency"],
+      "required": [
+        "timeout_seconds",
+        "max_concurrency"
+      ],
       "properties": {
         "timeout_seconds": {
           "type": "integer",
@@ -148,79 +331,82 @@
     "outcomes": {
       "type": "object",
       "description": "Minimum evidence required for each clearance outcome.",
-      "required": ["minimum_evidence"],
+      "required": [
+        "minimum_evidence"
+      ],
       "properties": {
         "minimum_evidence": {
           "type": "object",
-          "required": ["cleared", "cleared_with_residual_risk", "blocked", "incomplete"],
+          "required": [
+            "cleared",
+            "cleared_with_residual_risk",
+            "blocked",
+            "incomplete"
+          ],
           "properties": {
             "cleared": {
               "type": "object",
-              "required": ["required_adapters_must_pass", "zero_blocking_findings", "clean_tree_required"],
+              "required": [
+                "required_adapters_must_pass",
+                "zero_blocking_findings",
+                "clean_tree_required"
+              ],
               "properties": {
-                "required_adapters_must_pass": { "type": "boolean" },
-                "zero_blocking_findings": { "type": "boolean" },
-                "clean_tree_required": { "type": "boolean" }
+                "required_adapters_must_pass": {
+                  "type": "boolean"
+                },
+                "zero_blocking_findings": {
+                  "type": "boolean"
+                },
+                "clean_tree_required": {
+                  "type": "boolean"
+                }
               },
               "additionalProperties": false
             },
             "cleared_with_residual_risk": {
               "type": "object",
-              "required": ["accepted_risks_unexpired"],
+              "required": [
+                "accepted_risks_unexpired"
+              ],
               "properties": {
-                "accepted_risks_unexpired": { "type": "boolean" }
+                "accepted_risks_unexpired": {
+                  "type": "boolean"
+                }
               },
               "additionalProperties": false
             },
             "blocked": {
               "type": "object",
-              "required": ["blocking_finding_present"],
+              "required": [
+                "blocking_finding_present"
+              ],
               "properties": {
-                "blocking_finding_present": { "type": "boolean" }
+                "blocking_finding_present": {
+                  "type": "boolean"
+                }
               },
               "additionalProperties": false
             },
             "incomplete": {
               "type": "object",
-              "required": ["missing_required_adapter", "crashed_or_timed_out"],
+              "required": [
+                "missing_required_adapter",
+                "crashed_or_timed_out"
+              ],
               "properties": {
-                "missing_required_adapter": { "type": "boolean" },
-                "crashed_or_timed_out": { "type": "boolean" }
+                "missing_required_adapter": {
+                  "type": "boolean"
+                },
+                "crashed_or_timed_out": {
+                  "type": "boolean"
+                }
               },
               "additionalProperties": false
             }
           },
           "additionalProperties": false
         }
-      },
-      "additionalProperties": false
-    }
-  },
-  "additionalProperties": false,
-  "$defs": {
-    "scope_rule": {
-      "type": "object",
-      "required": ["adapters", "commands", "allow_dirty"],
-      "properties": {
-        "adapters": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "commands": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "allow_dirty": { "type": "boolean" }
-      },
-      "additionalProperties": false
-    },
-    "command_rule": {
-      "type": "object",
-      "required": ["name", "run"],
-      "properties": {
-        "name": { "type": "string" },
-        "run": { "type": "string" },
-        "timeout_seconds": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
     }
