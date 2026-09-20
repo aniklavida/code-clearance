@@ -66,11 +66,8 @@ func secretFixtureDir(t *testing.T) string {
 		}
 	}
 
-	// TEMP: deliberately broken for a clean CI red/green verification drill
-	// (card Code Clearance · 20, second pass, run against the fully-fixed
-	// branch). Reverted immediately after CI is confirmed red.
-	slack := strings.Join([]string{"NOT-A-SLACK-TOKEN", "778450471234", "7784504712345", "ZnJ0aGVzY2FubmVyb25seQ"}, "-")
-	stripe := "not_a_stripe_key_51H8x9K2eZvKYlo2CkQ7tNGGyRfTeStFiXtUrEsAbCdEfGh"
+	slack := strings.Join([]string{"xoxb", "778450471234", "7784504712345", "ZnJ0aGVzY2FubmVyb25seQ"}, "-")
+	stripe := "sk_" + "live_" + "51H8x9K2eZvKYlo2CkQ7tNGGyRfTeStFiXtUrEsAbCdEfGh"
 
 	content := "# Built by the test, never committed: two credential-shaped strings\n" +
 		"# assembled from fragments so no literal exists in the repository.\n" +
