@@ -96,8 +96,19 @@ jobs:
       - name: Install Scanners
         shell: bash
         run: |
-          go install github.com/zricethezav/gitleaks/v8@latest
-          go install github.com/google/osv-scanner/cmd/osv-scanner@v1
+          go install -ldflags="-X=github.com/zricethezav/gitleaks/v8/version.Version=8.18.4" github.com/zricethezav/gitleaks/v8@v8.18.4
+          
+          OS="${{ runner.os }}"
+          ARCH="${{ runner.arch }}"
+          if [ "$OS" = "Linux" ]; then OS="linux"; elif [ "$OS" = "macOS" ]; then OS="darwin"; elif [ "$OS" = "Windows" ]; then OS="windows"; fi
+          if [ "$ARCH" = "X64" ]; then ARCH="amd64"; elif [ "$ARCH" = "ARM64" ]; then ARCH="arm64"; fi
+          
+          EXT=""
+          if [ "$OS" = "windows" ]; then EXT=".exe"; fi
+          
+          URL="https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_${OS}_${ARCH}${EXT}"
+          curl -sL "$URL" -o "$(go env GOPATH)/bin/osv-scanner${EXT}"
+          chmod +x "$(go env GOPATH)/bin/osv-scanner${EXT}"
 
       - name: Test
         shell: bash
