@@ -96,7 +96,7 @@ jobs:
       - name: Install Scanners
         shell: bash
         run: |
-          go install -ldflags="-X=github.com/zricethezav/gitleaks/v8/version.Version=8.18.4" github.com/zricethezav/gitleaks/v8@v8.18.4
+          go install -ldflags="-X=github.com/zricethezav/gitleaks/v8/cmd.Version=8.18.4" github.com/zricethezav/gitleaks/v8@v8.18.4
           
           OS="${{ runner.os }}"
           ARCH="${{ runner.arch }}"
