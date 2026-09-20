@@ -35,27 +35,47 @@ type ScanOptions struct {
 	// defined it and the policy layer enforced it, but nothing could reach
 	// the engine to say so.
 	Config *policy.Config
+
+	// TargetTools, if non-empty, restricts execution to only the named tools/adapters/commands.
+	TargetTools []string
+
+	// TargetFiles, if non-empty, restricts execution scope to the specified files.
+	TargetFiles []string
+}
+
+type adapterEntry struct {
+	name string
+	fn   ScannerAdapter
 }
 
 // Engine coordinates scope planning, parallel execution, artifact persistence,
 // and report assembly.
 type Engine struct {
 	mu       sync.RWMutex
-	adapters []ScannerAdapter
+	adapters []adapterEntry
 }
 
 // NewEngine constructs an Engine with the provided scanner adapters.
 func NewEngine(adapters ...ScannerAdapter) *Engine {
-	return &Engine{
-		adapters: append([]ScannerAdapter(nil), adapters...),
+	eng := &Engine{}
+	for _, a := range adapters {
+		eng.adapters = append(eng.adapters, adapterEntry{fn: a})
 	}
+	return eng
 }
 
-// AddAdapter appends a scanner adapter to the engine.
+// AddAdapter appends an unnamed scanner adapter to the engine.
 func (e *Engine) AddAdapter(adapter ScannerAdapter) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.adapters = append(e.adapters, adapter)
+	e.adapters = append(e.adapters, adapterEntry{fn: adapter})
+}
+
+// AddNamedAdapter appends a named scanner adapter to the engine.
+func (e *Engine) AddNamedAdapter(name string, adapter ScannerAdapter) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.adapters = append(e.adapters, adapterEntry{name: name, fn: adapter})
 }
 
 // ScanWithOptions executes clearance checks on targetDir using the specified options.
@@ -102,7 +122,7 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	}()
 
 	e.mu.RLock()
-	adapters := append([]ScannerAdapter(nil), e.adapters...)
+	adapters := append([]adapterEntry(nil), e.adapters...)
 	e.mu.RUnlock()
 
 	// 3. Parallel Execution: run adapters and repository commands concurrently
@@ -121,12 +141,28 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 
 	// Adapter tasks
 	for idx, a := range adapters {
-		taskFn := a
-		taskName := fmt.Sprintf("adapter-%d", idx)
+		if len(opts.TargetTools) > 0 && a.name != "" && !containsString(opts.TargetTools, a.name) {
+			continue
+		}
+		entryFn := a.fn
+		taskName := a.name
+		if taskName == "" {
+			taskName = fmt.Sprintf("adapter-%d", idx)
+		}
 		tasks = append(tasks, executionTask{
 			name: taskName,
 			fn: func(c context.Context) []evidence.RunOutcome {
-				return taskFn(c, absDir)
+				outcomes := entryFn(c, absDir)
+				if len(opts.TargetTools) > 0 {
+					var filtered []evidence.RunOutcome
+					for _, o := range outcomes {
+						if containsString(opts.TargetTools, o.Tool) {
+							filtered = append(filtered, o)
+						}
+					}
+					return filtered
+				}
+				return outcomes
 			},
 		})
 	}
@@ -134,8 +170,12 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	// Repository command tasks (from clearance.yaml)
 	for _, cmdRule := range plan.Commands {
 		rule := cmdRule
+		cmdName := "command:" + rule.Name
+		if len(opts.TargetTools) > 0 && !containsString(opts.TargetTools, cmdName) && !containsString(opts.TargetTools, rule.Name) {
+			continue
+		}
 		tasks = append(tasks, executionTask{
-			name: "command:" + rule.Name,
+			name: cmdName,
 			fn: func(c context.Context) []evidence.RunOutcome {
 				outcome, _, _ := RunRepositoryCommand(c, rule, absDir)
 				return []evidence.RunOutcome{outcome}
@@ -283,11 +323,34 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	if reviews, err := st.GetReviews(); err == nil && len(reviews) > 0 {
 		for i := range report.Findings {
 			if rec, ok := reviews[report.Findings[i].Fingerprint]; ok {
+				// Invariant: A finding becomes fixed ONLY through new recorded evidence from a verification run.
+				// An agent or reviewer asserting it fixed something changes nothing about the finding's state.
+				if rec.ChallengeStatus == evidence.ChallengeFixed {
+					hasValidVerification := false
+					for _, vr := range rec.VerificationRuns {
+						if (vr.Status == evidence.StatusOK || vr.Status == evidence.StatusFindings) && vr.Outcome == "cleared" {
+							hasValidVerification = true
+							break
+						}
+					}
+					if !hasValidVerification {
+						continue
+					}
+				}
 				report.Findings[i].ChallengeStatus = rec.ChallengeStatus
 				report.Findings[i].ChallengeRationale = rec.Reason
 				report.Findings[i].Reviewer = evidence.Reviewer{
 					Type:     rec.ReviewerType,
 					Identity: rec.ReviewerIdentity,
+				}
+				if rec.FixPatch != nil {
+					report.Findings[i].FixPatch = rec.FixPatch
+				}
+				if len(rec.VerificationRuns) > 0 {
+					report.Findings[i].VerificationRuns = rec.VerificationRuns
+				}
+				if rec.Disposition != "" {
+					report.Findings[i].Disposition = rec.Disposition
 				}
 			}
 		}
@@ -316,6 +379,7 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	}
 
 	policy.ApplyVerdict(cfg, &report)
+	_ = st.SaveLatestReport(session, report)
 	return report, nil
 }
 
@@ -326,9 +390,14 @@ func (e *Engine) Scan(ctx context.Context, targetDir string) (evidence.Report, e
 
 var defaultEngine = &Engine{}
 
-// RegisterDefaultAdapter registers an adapter to run during default scans.
+// RegisterDefaultAdapter registers an unnamed adapter to run during default scans.
 func RegisterDefaultAdapter(adapter ScannerAdapter) {
 	defaultEngine.AddAdapter(adapter)
+}
+
+// RegisterNamedAdapter registers a named adapter to run during default scans.
+func RegisterNamedAdapter(name string, adapter ScannerAdapter) {
+	defaultEngine.AddNamedAdapter(name, adapter)
 }
 
 // Scan executes clearance checks on targetDir using the default engine.

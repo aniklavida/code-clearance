@@ -141,12 +141,12 @@ func TestConstraint_AgentCannotClearHumanRequiredClass(t *testing.T) {
 		{Tool: "dummy", Severity: evidence.SeverityHigh},
 	}
 
-	// Agent tries to fix it
+	// Agent tries to clear it by rejecting
 	_ = RecordReview(ctx, RecordReviewArgs{
 		TargetDir:        dir,
 		Fingerprint:      "fp-human-req",
-		ChallengeStatus:  "fixed",
-		Reason:           "I fixed it",
+		ChallengeStatus:  "rejected",
+		Reason:           "I refute this finding",
 		ReviewerType:     "agent",
 		ReviewerIdentity: "ai-1",
 	})
@@ -160,12 +160,12 @@ func TestConstraint_AgentCannotClearHumanRequiredClass(t *testing.T) {
 		t.Fatalf("expected blocked, got %v", report.Outcome)
 	}
 
-	// Human fixes it
+	// Human clears it by rejecting
 	_ = RecordReview(ctx, RecordReviewArgs{
 		TargetDir:        dir,
 		Fingerprint:      "fp-human-req",
-		ChallengeStatus:  "fixed",
-		Reason:           "I fixed it for real",
+		ChallengeStatus:  "rejected",
+		Reason:           "I refute this finding for real",
 		ReviewerType:     "human",
 		ReviewerIdentity: "alice",
 	})

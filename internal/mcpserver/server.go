@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"encoding/json"
+	"fmt"
 	_ "github.com/aniklavida/code-clearance/internal/adapters"
 	"github.com/aniklavida/code-clearance/internal/app"
 	"os"
@@ -49,6 +50,22 @@ func NewServer() *mcp.Server {
 	}, RunClearanceScan)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "clearance_scan",
+		Description: "Run the clearance scanners against a " +
+			"target directory and return normalized, evidence-backed findings bound to commit and tree state.",
+	}, RunClearanceScan)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clearance_get_fix_context",
+		Description: "Get the evidence and constraints an agent needs to prepare a patch for one finding, and nothing beyond that.",
+	}, GetFixContext)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clearance_verify",
+		Description: "Rerun the minimum affected checks and tests after a change to verify remediation of a finding.",
+	}, ClearanceVerify)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "clearance_record_review",
 		Description: "Record a review decision for a specific finding by fingerprint.",
 	}, RecordReview)
@@ -85,6 +102,9 @@ func RunClearanceScan(ctx context.Context, req *mcp.CallToolRequest, args ScanAr
 }
 
 func RecordReview(ctx context.Context, req *mcp.CallToolRequest, args app.RecordReviewArgs) (*mcp.CallToolResult, string, error) {
+	if args.ChallengeStatus == string(evidence.ChallengeFixed) {
+		return nil, "", fmt.Errorf("a finding cannot be marked fixed directly: findings become fixed only through new recorded evidence from a verification run (clearance_verify)")
+	}
 	// The MCP tool surface is only ever invoked by an agent, never directly by a human.
 	// Force the reviewer type to agent so that agents cannot bypass human_required_classes
 	// by claiming to be a human reviewer.
@@ -94,6 +114,22 @@ func RecordReview(ctx context.Context, req *mcp.CallToolRequest, args app.Record
 		return nil, "", err
 	}
 	return nil, "Review recorded successfully", nil
+}
+
+func GetFixContext(ctx context.Context, req *mcp.CallToolRequest, args app.FixContextArgs) (*mcp.CallToolResult, *app.FixContext, error) {
+	fixCtx, err := app.GetFixContext(ctx, args)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, fixCtx, nil
+}
+
+func ClearanceVerify(ctx context.Context, req *mcp.CallToolRequest, args app.VerifyArgs) (*mcp.CallToolResult, evidence.Report, error) {
+	rep, err := app.Verify(ctx, args)
+	if err != nil {
+		return nil, evidence.Report{}, err
+	}
+	return nil, rep, nil
 }
 
 func GetFindings(ctx context.Context, req *mcp.CallToolRequest, args app.GetFindingsArgs) (*mcp.CallToolResult, []evidence.Finding, error) {

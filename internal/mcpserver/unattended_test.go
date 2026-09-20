@@ -105,8 +105,8 @@ qAycArKaOI3zeDK14Q6wAAAAF2FuaWtATWRzLU1hYy1taW5pLmxvY2FsAQIDBAUG
 	_, _, err = RecordReview(ctx, nil, app.RecordReviewArgs{
 		TargetDir:       tmpDir,
 		Fingerprint:     fp,
-		ChallengeStatus: string(evidence.ChallengeFixed),
-		Reason:          "I removed the token",
+		ChallengeStatus: string(evidence.ChallengeConfirmed),
+		Reason:          "I confirmed the token",
 		ReviewerType:    "human",
 	})
 	if err != nil {

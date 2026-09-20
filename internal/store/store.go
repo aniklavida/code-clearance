@@ -160,12 +160,15 @@ func (s *Store) GetArtifact(ref evidence.ArtifactReference) ([]byte, error) {
 }
 
 type ReviewRecord struct {
-	ChallengeStatus  evidence.ChallengeStatus `json:"challenge_status"`
-	ReviewerType     evidence.ReviewerType    `json:"reviewer_type"`
-	ReviewerIdentity string                   `json:"reviewer_identity"`
-	Reason           string                   `json:"reason"`
-	ExpiresAt        string                   `json:"expires_at,omitempty"`
-	Timestamp        string                   `json:"timestamp"`
+	ChallengeStatus  evidence.ChallengeStatus   `json:"challenge_status"`
+	ReviewerType     evidence.ReviewerType      `json:"reviewer_type"`
+	ReviewerIdentity string                     `json:"reviewer_identity"`
+	Reason           string                     `json:"reason"`
+	ExpiresAt        string                     `json:"expires_at,omitempty"`
+	Timestamp        string                     `json:"timestamp"`
+	FixPatch         *evidence.PatchReference   `json:"fix_patch,omitempty"`
+	VerificationRuns []evidence.VerificationRun `json:"verification_runs,omitempty"`
+	Disposition      string                     `json:"disposition,omitempty"`
 }
 
 func (s *Store) SaveReview(fingerprint string, record ReviewRecord) error {
@@ -228,4 +231,76 @@ func (s *Store) GetReviews() (map[string]ReviewRecord, error) {
 		reviews[fingerprint] = record
 	}
 	return reviews, nil
+}
+
+// SetLatestRunID updates latest-run.json atomically.
+func (s *Store) SetLatestRunID(runID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tmpPath := filepath.Join(s.rootDir, "latest-run.json.tmp")
+	finalPath := filepath.Join(s.rootDir, "latest-run.json")
+	if err := os.WriteFile(tmpPath, []byte(runID), 0o644); err != nil {
+		return fmt.Errorf("write temp latest pointer: %w", err)
+	}
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("commit latest pointer: %w", err)
+	}
+	return nil
+}
+
+// SaveLatestReport writes the report to the session's artifacts and updates latest-run.json.
+func (s *Store) SaveLatestReport(session *RunSession, report evidence.Report) error {
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal report: %w", err)
+	}
+	if _, err := session.SaveArtifact("clearance_report", "json", data); err != nil {
+		return fmt.Errorf("save report artifact: %w", err)
+	}
+	return s.SetLatestRunID(session.RunID())
+}
+
+// GetLatestReport loads the report from the most recent run recorded in the store.
+func (s *Store) GetLatestReport() (*evidence.Report, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var latestRunID string
+	pointerPath := filepath.Join(s.rootDir, "latest-run.json")
+	if b, err := os.ReadFile(pointerPath); err == nil && len(b) > 0 {
+		latestRunID = strings.TrimSpace(string(b))
+	}
+
+	runsDir := filepath.Join(s.rootDir, "runs")
+	if latestRunID == "" {
+		entries, err := os.ReadDir(runsDir)
+		if err != nil || len(entries) == 0 {
+			return nil, os.ErrNotExist
+		}
+		for _, e := range entries {
+			if e.IsDir() && strings.HasPrefix(e.Name(), "run-") {
+				if e.Name() > latestRunID {
+					latestRunID = e.Name()
+				}
+			}
+		}
+	}
+
+	if latestRunID == "" {
+		return nil, os.ErrNotExist
+	}
+
+	reportPath := filepath.Join(runsDir, latestRunID, "artifacts", "clearance_report.json")
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var rep evidence.Report
+	if err := json.Unmarshal(data, &rep); err != nil {
+		return nil, fmt.Errorf("unmarshal report JSON: %w", err)
+	}
+	return &rep, nil
 }

@@ -35,6 +35,9 @@
       "type": "string",
       "enum": ["cleared", "cleared-with-residual-risk", "blocked", "incomplete"]
     },
+    "reason": {
+      "type": "string"
+    },
     "runs": {
       "type": "array",
       "items": {
@@ -254,6 +257,9 @@
         "challenge_status": {
           "type": "string",
           "enum": ["unreviewed", "confirmed", "rejected", "accepted-risk", "fixed", "unresolved"]
+        },
+        "challenge_rationale": {
+          "type": "string"
         },
         "reviewer": {
           "type": "object",

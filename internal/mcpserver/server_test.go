@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aniklavida/code-clearance/internal/app"
+	"github.com/aniklavida/code-clearance/internal/evidence"
 	"github.com/aniklavida/code-clearance/internal/mcpserver"
 	"github.com/aniklavida/code-clearance/internal/store"
 )
@@ -201,5 +202,133 @@ func TestClearanceReport_LatestOrdering(t *testing.T) {
 
 	if rep.SchemaVersion != "run2" {
 		t.Errorf("Expected report from run2, got %s", rep.SchemaVersion)
+	}
+}
+
+// TestEnforceCannotMarkFixedWithoutRerun_MCP proves Done When #2 (MCP path):
+// Marking a finding fixed without a successful rerun is impossible through the MCP surface.
+func TestEnforceCannotMarkFixedWithoutRerun_MCP(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	args := app.RecordReviewArgs{
+		TargetDir:        dir,
+		Fingerprint:      "fp-mcp-unverified",
+		ChallengeStatus:  "fixed",
+		Reason:           "Agent claims it fixed the vulnerability directly",
+		ReviewerType:     "agent",
+		ReviewerIdentity: "ai-assistant",
+	}
+
+	// Calling clearance_record_review with ChallengeStatus=fixed MUST fail
+	_, _, err := mcpserver.RecordReview(ctx, nil, args)
+	if err == nil {
+		t.Fatal("SECURITY VIOLATION: MCP RecordReview allowed marking finding fixed without a verification rerun")
+	}
+
+	// Verify that nothing was written to the store as fixed
+	st, err := store.New(filepath.Join(dir, ".clearance"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	reviews, err := st.GetReviews()
+	if err != nil {
+		t.Fatalf("GetReviews failed: %v", err)
+	}
+	if rec, exists := reviews["fp-mcp-unverified"]; exists {
+		if rec.ChallengeStatus == "fixed" {
+			t.Fatal("SECURITY VIOLATION: Review record exists with fixed status in store")
+		}
+	}
+}
+
+func TestMCP_ClearanceGetFixContext(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	st, err := store.New(filepath.Join(dir, ".clearance"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	finding := evidence.Finding{
+		ID:                 "F-MCP-01",
+		Fingerprint:        "fp-mcp-01",
+		Tool:               "gitleaks",
+		RuleID:             "slack-webhook",
+		Message:            "Slack Webhook URL detected",
+		NormalizedSeverity: evidence.SeverityHigh,
+		Locations:          []evidence.Location{{URI: "config.go"}},
+		Evidence:           evidence.FindingEvidence{Match: "webhook-url"},
+	}
+
+	rep := evidence.Report{
+		SchemaVersion: "v1",
+		Findings:      []evidence.Finding{finding},
+		Runs:          []evidence.RunOutcome{{Tool: "gitleaks", Status: evidence.StatusOK}},
+	}
+	session, _ := st.CreateRun("run-mcp")
+	_ = st.SaveLatestReport(session, rep)
+
+	_, fixCtx, err := mcpserver.GetFixContext(ctx, nil, app.FixContextArgs{
+		TargetDir: dir,
+		FindingID: "F-MCP-01",
+	})
+	if err != nil {
+		t.Fatalf("GetFixContext failed: %v", err)
+	}
+
+	if fixCtx.FindingID != "F-MCP-01" {
+		t.Fatalf("expected F-MCP-01, got %s", fixCtx.FindingID)
+	}
+	if len(fixCtx.Constraints) == 0 {
+		t.Fatal("expected non-empty constraints in fix context")
+	}
+}
+
+func TestMCP_ClearanceVerify(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	st, err := store.New(filepath.Join(dir, ".clearance"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	finding := evidence.Finding{
+		ID:                 "F-VERIFY-01",
+		Fingerprint:        "fp-verify-01",
+		Tool:               "gitleaks",
+		RuleID:             "generic-api-key",
+		NormalizedSeverity: evidence.SeverityHigh,
+		Locations:          []evidence.Location{{URI: "token.go"}},
+	}
+
+	rep := evidence.Report{
+		SchemaVersion: "v1",
+		Findings:      []evidence.Finding{finding},
+		Runs:          []evidence.RunOutcome{{Tool: "gitleaks", Status: evidence.StatusOK}},
+	}
+	session, _ := st.CreateRun("run-mcp-verify")
+	_ = st.SaveLatestReport(session, rep)
+
+	// In clean temp dir with no tokens, verification rerun clears the finding
+	_, vRep, err := mcpserver.ClearanceVerify(ctx, nil, app.VerifyArgs{
+		TargetDir: dir,
+		FindingID: "F-VERIFY-01",
+		Patch: &evidence.PatchReference{
+			Diff: "--- a/token.go\n+++ b/token.go\n@@ -1 +0,0 @@",
+		},
+		Approved: true,
+	})
+	if err != nil {
+		t.Fatalf("ClearanceVerify failed: %v", err)
+	}
+
+	if vRep.Outcome != evidence.OutcomeCleared {
+		t.Fatalf("expected Cleared, got %s (reason: %s)", vRep.Outcome, vRep.Reason)
+	}
+	if len(vRep.Findings) != 1 || vRep.Findings[0].ChallengeStatus != evidence.ChallengeFixed {
+		t.Fatalf("expected verified fixed finding in report, got %+v", vRep.Findings)
 	}
 }
