@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -277,6 +278,27 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 				if o.Command != "" && o.Findings[fIdx].Command == "" {
 					o.Findings[fIdx].Command = o.Command
 				}
+			}
+
+			// Filter out internal store artifacts from scanner findings
+			var filteredFindings []evidence.Finding
+			for _, f := range o.Findings {
+				isExcluded := false
+				for _, loc := range f.Locations {
+					cleanURI := filepath.ToSlash(loc.URI)
+					if strings.HasPrefix(cleanURI, ".clearance/") || strings.Contains(cleanURI, "/.clearance/") {
+						isExcluded = true
+						break
+					}
+				}
+				if isExcluded {
+					continue
+				}
+				filteredFindings = append(filteredFindings, f)
+			}
+			o.Findings = filteredFindings
+			if len(o.Findings) == 0 && o.Status == evidence.StatusFindings {
+				o.Status = evidence.StatusOK
 			}
 
 			runs = append(runs, o)

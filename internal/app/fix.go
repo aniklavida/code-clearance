@@ -77,6 +77,33 @@ func GetFixContext(ctx context.Context, args FixContextArgs) (*FixContext, error
 				}
 			}
 		}
+		if foundFinding != nil {
+			if reviews, rErr := st.GetReviews(); rErr == nil {
+				if rev, ok := reviews[foundFinding.Fingerprint]; ok {
+					if rev.ChallengeStatus != "" {
+						foundFinding.ChallengeStatus = rev.ChallengeStatus
+					}
+					if rev.Reason != "" {
+						foundFinding.ChallengeRationale = rev.Reason
+					}
+					if rev.ReviewerType != "" {
+						foundFinding.Reviewer = evidence.Reviewer{
+							Type:     rev.ReviewerType,
+							Identity: rev.ReviewerIdentity,
+						}
+					}
+					if rev.FixPatch != nil {
+						foundFinding.FixPatch = rev.FixPatch
+					}
+					if len(rev.VerificationRuns) > 0 {
+						foundFinding.VerificationRuns = rev.VerificationRuns
+					}
+					if rev.Disposition != "" {
+						foundFinding.Disposition = rev.Disposition
+					}
+				}
+			}
+		}
 	}
 
 	// 2. Fall back to current scan if not found in latest report
