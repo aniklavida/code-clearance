@@ -166,3 +166,40 @@ func TestMCPServer_RecordReviewForcesAgent(t *testing.T) {
 		t.Fatalf("Expected ReviewerType to be agent, got %v", rec.ReviewerType)
 	}
 }
+
+func TestClearanceReport_LatestOrdering(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	st, err := store.New(filepath.Join(tmpDir, ".clearance"))
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+
+	// Create run 1 with a later suffix, but logically first
+	run1ID := "run-20230101T000000Z-ffffff"
+	run1, _ := st.CreateRun(run1ID)
+
+	// Create a dummy report
+	rep1Data := []byte(`{"schema_version": "run1"}`)
+	run1.SaveArtifact("clearance_report", "json", rep1Data)
+	os.WriteFile(filepath.Join(st.RootDir(), "latest-run.json"), []byte(run1ID), 0644)
+
+	// Create run 2 with an earlier suffix, but logically second
+	run2ID := "run-20230101T000000Z-aaaaaa"
+	run2, _ := st.CreateRun(run2ID)
+
+	rep2Data := []byte(`{"schema_version": "run2"}`)
+	run2.SaveArtifact("clearance_report", "json", rep2Data)
+	os.WriteFile(filepath.Join(st.RootDir(), "latest-run.json"), []byte(run2ID), 0644)
+
+	// Call ClearanceReport
+	_, rep, err := mcpserver.ClearanceReport(ctx, nil, mcpserver.ClearanceReportArgs{TargetDir: tmpDir})
+	if err != nil {
+		t.Fatalf("ClearanceReport failed: %v", err)
+	}
+
+	if rep.SchemaVersion != "run2" {
+		t.Errorf("Expected report from run2, got %s", rep.SchemaVersion)
+	}
+}

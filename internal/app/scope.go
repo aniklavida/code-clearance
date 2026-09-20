@@ -56,39 +56,19 @@ func PlanScope(ctx context.Context, targetDir string, opts ScopeOptions, cfg pol
 	var scopeAdapters []string
 	var scopeCommands []policy.CommandRule
 
-	var rule policy.ScopeRule
-	switch scope {
-	case "full":
-		rule = cfg.Scopes.Full
-	case "release":
-		rule = cfg.Scopes.Release
-	default:
-		rule = cfg.Scopes.Quick
-	}
+	prof := cfg.ActiveProfile(scope)
 
-	if len(rule.Adapters) > 0 {
-		scopeAdapters = append(scopeAdapters, rule.Adapters...)
-	} else {
-		// Fall back to config required and optional adapters
-		scopeAdapters = append(scopeAdapters, cfg.Adapters.Required...)
-		scopeAdapters = append(scopeAdapters, cfg.Adapters.Optional...)
-	}
+	scopeAdapters = append(scopeAdapters, prof.Adapters.Required...)
+	scopeAdapters = append(scopeAdapters, prof.Adapters.Optional...)
+
 	sort.Strings(scopeAdapters)
 	scopeAdapters = dedupeStrings(scopeAdapters)
 
-	// Map command names from scope rule to CommandRule definitions
-	cmdMap := make(map[string]policy.CommandRule)
-	for _, c := range cfg.Commands.Required {
-		cmdMap[c.Name] = c
+	for _, ruleDef := range prof.Commands.Required {
+		scopeCommands = append(scopeCommands, ruleDef)
 	}
-	for _, c := range cfg.Commands.Optional {
-		cmdMap[c.Name] = c
-	}
-
-	for _, cmdName := range rule.Commands {
-		if ruleDef, ok := cmdMap[cmdName]; ok {
-			scopeCommands = append(scopeCommands, ruleDef)
-		}
+	for _, ruleDef := range prof.Commands.Optional {
+		scopeCommands = append(scopeCommands, ruleDef)
 	}
 
 	return &ScopePlan{

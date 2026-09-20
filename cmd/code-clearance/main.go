@@ -7,6 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/aniklavida/code-clearance/internal/policy"
+	"github.com/aniklavida/code-clearance/internal/schema"
+	"github.com/aniklavida/code-clearance/internal/store"
 	"os/signal"
 	"syscall"
 
@@ -27,6 +33,10 @@ func main() {
 	defer cancel()
 
 	switch os.Args[1] {
+	case "run", "clearance_run":
+		os.Exit(runClearanceRun(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "report", "clearance_report":
+		os.Exit(runClearanceReport(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "scan":
 		os.Exit(runScan(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "record-review":
@@ -55,6 +65,8 @@ Usage:
   code-clearance <command> [flags] [dir]
 
 Commands:
+  run             Run the full clearance pipeline using a profile
+  report          Re-render the most recently persisted run's report
   scan            Run clearance scanners and report evidence
   record-review   Record a review decision for a finding
   findings        Get current findings and review states
@@ -176,5 +188,130 @@ func runFindings(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		return 1
 	}
 	fmt.Fprintln(stdout, string(data))
+	return 0
+}
+
+func runClearanceRun(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	jsonOut := fs.Bool("json", false, "output report as JSON")
+	profile := fs.String("profile", "quick", "scan profile: quick (default), full, release")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	targetDir := "."
+	if fs.NArg() > 0 {
+		targetDir = fs.Arg(0)
+	}
+
+	opts := app.ScanOptions{Scope: *profile}
+	cfgPath := filepath.Join(targetDir, "clearance.json")
+	if data, err := os.ReadFile(cfgPath); err == nil {
+		if valErr := schema.ValidateClearance(data); valErr != nil {
+			fmt.Fprintf(stderr, "invalid clearance.json: %v\n", valErr)
+			return 1
+		}
+		if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
+			opts.Config = &cfg
+		}
+	}
+
+	report, err := app.ScanWithOptions(ctx, targetDir, opts)
+	if err != nil {
+		fmt.Fprintf(stderr, "scan error: %v\n", err)
+		return 1
+	}
+
+	// Persist the report
+	st, err := store.New(filepath.Join(targetDir, ".clearance"))
+	if err == nil {
+		session, err := st.CreateRun("")
+		if err == nil {
+			data, _ := json.MarshalIndent(report, "", "  ")
+			session.SaveArtifact("clearance_report", "json", data)
+		}
+	}
+
+	if *jsonOut {
+		data, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			fmt.Fprintf(stderr, "json marshal error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, string(data))
+	} else {
+		printHumanReport(report, stdout)
+	}
+
+	for _, run := range report.Runs {
+		if run.Status == evidence.StatusFindings || run.Status == evidence.StatusCrashed || run.Status == evidence.StatusTimedOut {
+			return 1
+		}
+	}
+	if report.Outcome != evidence.OutcomeCleared && report.Outcome != evidence.OutcomeClearedWithResidualRisk {
+		return 1
+	}
+	return 0
+}
+
+func runClearanceReport(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	jsonOut := fs.Bool("json", false, "output report as JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	targetDir := "."
+	if fs.NArg() > 0 {
+		targetDir = fs.Arg(0)
+	}
+
+	st, err := store.New(filepath.Join(targetDir, ".clearance"))
+	if err != nil {
+		fmt.Fprintf(stderr, "store error: %v\n", err)
+		return 1
+	}
+
+	runsDir := filepath.Join(st.RootDir(), "runs")
+	entries, err := os.ReadDir(runsDir)
+	if err != nil || len(entries) == 0 {
+		fmt.Fprintf(stderr, "no previous runs found\n")
+		return 1
+	}
+
+	var latest string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "run-") {
+			if e.Name() > latest {
+				latest = e.Name()
+			}
+		}
+	}
+	if latest == "" {
+		fmt.Fprintf(stderr, "no previous runs found\n")
+		return 1
+	}
+
+	reportPath := filepath.Join(runsDir, latest, "artifacts", "clearance_report.json")
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "could not read report from latest run: %v\n", err)
+		return 1
+	}
+
+	if *jsonOut {
+		fmt.Fprintln(stdout, string(data))
+		return 0
+	}
+
+	var rep evidence.Report
+	if err := json.Unmarshal(data, &rep); err != nil {
+		fmt.Fprintf(stderr, "could not parse report JSON: %v\n", err)
+		return 1
+	}
+
+	printHumanReport(rep, stdout)
 	return 0
 }
