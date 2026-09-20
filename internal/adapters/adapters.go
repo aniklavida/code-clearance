@@ -927,7 +927,25 @@ func DefaultScanners() []app.ScannerAdapter {
 }
 
 func init() {
-	for _, a := range DefaultScanners() {
-		app.RegisterDefaultAdapter(a)
-	}
+	g := NewGitleaksAdapter()
+	o := NewOSVScannerAdapter()
+	s := NewSemgrepAdapter()
+	t := NewTrivyAdapter()
+
+	app.RegisterNamedAdapter("gitleaks", func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		return []evidence.RunOutcome{g.Run(ctx, targetDir)}
+	})
+	app.RegisterNamedAdapter("osv-scanner", func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		lockfile := filepath.Join(targetDir, "package-lock.json")
+		if _, err := os.Stat(lockfile); err == nil {
+			return []evidence.RunOutcome{o.Run(ctx, lockfile)}
+		}
+		return []evidence.RunOutcome{o.Run(ctx, targetDir)}
+	})
+	app.RegisterNamedAdapter("semgrep", func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		return []evidence.RunOutcome{s.Run(ctx, targetDir)}
+	})
+	app.RegisterNamedAdapter("trivy", func(ctx context.Context, targetDir string) []evidence.RunOutcome {
+		return []evidence.RunOutcome{t.Run(ctx, targetDir)}
+	})
 }

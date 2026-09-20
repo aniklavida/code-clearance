@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Fix context handoff via `clearance_get_fix_context` (MCP) and `fix-context` (CLI) returning targeted evidence, remediation, and constraints for a single finding without whole-report exposure.
+- Targeted rerun verification via `clearance_verify` (MCP) and `verify` (CLI) executing minimum affected checks and writing finding -> patch reference -> verification run lineage into the stored record.
+- Invariant enforcement: findings cannot be marked fixed directly; findings transition to fixed solely through new recorded evidence from a successful verification rerun.
+- Patch safety enforcement guarding against destructive fixes and broad mutations without explicit approval.
 - Review workflow supporting challenge states: unreviewed, confirmed, rejected, accepted-risk, fixed and unresolved.
 - Persistence for review decisions and accepted risks keyed by finding fingerprint across runs.
 - `clearance_record_review` and `clearance_get_findings` tools available over MCP and CLI subcommands `record-review` and `findings`.

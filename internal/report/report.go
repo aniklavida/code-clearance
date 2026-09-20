@@ -90,6 +90,24 @@ func WriteTerminal(r evidence.Report, w io.Writer) error {
 				fmt.Fprintf(w, " (%s)", locStr)
 			}
 			fmt.Fprintln(w)
+			if f.ChallengeStatus != "" && f.ChallengeStatus != evidence.ChallengeUnreviewed {
+				fmt.Fprintf(w, "    status: %s\n", f.ChallengeStatus)
+			}
+			if f.FixPatch != nil {
+				patchInfo := f.FixPatch.Path
+				if patchInfo == "" {
+					patchInfo = f.FixPatch.Commit
+				}
+				if patchInfo == "" && f.FixPatch.Diff != "" {
+					patchInfo = "diff"
+				}
+				if patchInfo != "" {
+					fmt.Fprintf(w, "    patch: %s\n", patchInfo)
+				}
+			}
+			for _, vr := range f.VerificationRuns {
+				fmt.Fprintf(w, "    verification: %s (%s, %s)\n", vr.RunID, vr.Status, vr.Outcome)
+			}
 		}
 	}
 	fmt.Fprintln(w)

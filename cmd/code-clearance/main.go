@@ -41,6 +41,10 @@ func main() {
 		os.Exit(runScan(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "record-review":
 		os.Exit(runRecordReview(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "verify", "clearance_verify":
+		os.Exit(runVerify(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "fix-context", "get-fix-context", "clearance_get_fix_context":
+		os.Exit(runFixContext(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "findings":
 		os.Exit(runFindings(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "serve":
@@ -69,9 +73,11 @@ Commands:
   report          Re-render the most recently persisted run's report
   scan            Run clearance scanners and report evidence
   record-review   Record a review decision for a finding
+  verify          Rerun minimum affected checks to verify remediation
+  fix-context     Get evidence and constraints to prepare a fix
   findings        Get current findings and review states
   serve           Serve clearance MCP tools over stdio
-  version Print the version, and whether this build is signed
+  version         Print the version, and whether this build is signed
 `)
 }
 
@@ -149,6 +155,11 @@ func runRecordReview(ctx context.Context, args []string, stdout, stderr io.Write
 		return 2
 	}
 
+	if *status == string(evidence.ChallengeFixed) {
+		fmt.Fprintf(stderr, "error: a finding cannot be marked fixed directly: findings become fixed only through new recorded evidence from a verification run\n")
+		return 1
+	}
+
 	err := app.RecordReview(ctx, app.RecordReviewArgs{
 		TargetDir:        *dir,
 		Fingerprint:      *fp,
@@ -164,6 +175,111 @@ func runRecordReview(ctx context.Context, args []string, stdout, stderr io.Write
 	}
 
 	fmt.Fprintln(stdout, "Review recorded successfully")
+	return 0
+}
+
+func runVerify(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	jsonOut := fs.Bool("json", false, "output report as JSON")
+	dir := fs.String("dir", ".", "target directory")
+	findingID := fs.String("finding-id", "", "finding ID to verify")
+	fp := fs.String("fingerprint", "", "finding fingerprint to verify")
+	patchPath := fs.String("patch", "", "optional path to patch file")
+	patchDiff := fs.String("diff", "", "optional patch diff")
+	patchCommit := fs.String("commit", "", "optional patch commit")
+	approved := fs.Bool("approved", false, "confirm host approval for material patch")
+	timeoutSec := fs.Int("timeout", 0, "timeout in seconds")
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	targetDir := *dir
+	if fs.NArg() > 0 {
+		targetDir = fs.Arg(0)
+	}
+
+	if *findingID == "" && *fp == "" {
+		fmt.Fprintf(stderr, "error: finding-id or fingerprint is required\n")
+		return 2
+	}
+
+	rep, err := app.Verify(ctx, app.VerifyArgs{
+		TargetDir:      targetDir,
+		FindingID:      *findingID,
+		Fingerprint:    *fp,
+		PatchPath:      *patchPath,
+		PatchDiff:      *patchDiff,
+		PatchCommit:    *patchCommit,
+		Approved:       *approved,
+		TimeoutSeconds: *timeoutSec,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "verification error: %v\n", err)
+		return 1
+	}
+
+	if *jsonOut {
+		data, err := json.MarshalIndent(rep, "", "  ")
+		if err != nil {
+			fmt.Fprintf(stderr, "json marshal error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, string(data))
+	} else {
+		printHumanReport(rep, stdout)
+	}
+
+	if rep.Outcome != evidence.OutcomeCleared && rep.Outcome != evidence.OutcomeClearedWithResidualRisk {
+		return 1
+	}
+	return 0
+}
+
+func runFixContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("fix-context", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	jsonOut := fs.Bool("json", false, "output fix context as JSON")
+	dir := fs.String("dir", ".", "target directory")
+	findingID := fs.String("finding-id", "", "finding ID to retrieve fix context for")
+	fp := fs.String("fingerprint", "", "finding fingerprint to retrieve fix context for")
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	targetDir := *dir
+	if fs.NArg() > 0 {
+		targetDir = fs.Arg(0)
+	}
+
+	if *findingID == "" && *fp == "" {
+		fmt.Fprintf(stderr, "error: finding-id or fingerprint is required\n")
+		return 2
+	}
+
+	fixCtx, err := app.GetFixContext(ctx, app.FixContextArgs{
+		TargetDir:   targetDir,
+		FindingID:   *findingID,
+		Fingerprint: *fp,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "fix context error: %v\n", err)
+		return 1
+	}
+
+	if *jsonOut {
+		data, err := json.MarshalIndent(fixCtx, "", "  ")
+		if err != nil {
+			fmt.Fprintf(stderr, "json marshal error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, string(data))
+	} else {
+		data, _ := json.MarshalIndent(fixCtx, "", "  ")
+		fmt.Fprintln(stdout, string(data))
+	}
 	return 0
 }
 

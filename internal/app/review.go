@@ -21,6 +21,10 @@ type RecordReviewArgs struct {
 }
 
 func RecordReview(ctx context.Context, args RecordReviewArgs) error {
+	if args.ChallengeStatus == string(evidence.ChallengeFixed) {
+		return fmt.Errorf("a finding cannot be marked fixed directly: findings become fixed only through new recorded evidence from a verification run (clearance_verify)")
+	}
+
 	absDir, err := filepath.Abs(args.TargetDir)
 	if err != nil {
 		absDir = args.TargetDir
