@@ -89,9 +89,29 @@ jobs:
       - name: Build
         run: go build ./...
 
-      # The scanner adapters shell out to gitleaks and osv-scanner. Those tests
-      # skip, naming the missing binary, when it is not installed — so this job
-      # proves the core, the normalizer and the MCP surface on every platform,
-      # and the real-tool adapters only where the tools exist.
+      # The scanner adapters shell out to gitleaks and osv-scanner.
+      # We install them here so the real-tool adapter tests actually run
+      # and prove the adapters work against the real binaries, rather than
+      # silently skipping.
+      - name: Install Scanners
+        shell: bash
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@latest
+          go install github.com/google/osv-scanner/cmd/osv-scanner@v1
+
       - name: Test
-        run: go test ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -v ./... | tee test.log
+          
+          # Ensure requireTool-gated tests actually executed and did not skip
+          # due to missing binaries.
+          SKIPPED_TESTS=$(grep -E "--- SKIP: (TestGitleaks_RealProcess_FindsFixtureSecrets|TestOSVScanner_RealProcess_FindsVulnerableLockfile|TestGitleaks_RealProcess_CleanDirectoryReportsOK|TestOSVScanner_RealProcess_HungProcessKilledByTimeout|TestGitleaks_TimedOutRunIsNeverReportedAsAPass|TestAdapters_RawOutputRetainedInStoreAndReferencedInFindings|TestOSVScanner_RawOutputRetainedInStoreAndReferencedInFindings|TestAdapters_CrashingAdapterDoesNotCorruptOtherResults|TestGitleaks_RecordedCommandIsTheCommandThatRan|TestUnattendedAgentLoopReal|TestDetectToolVersion_RealInstalledTools)" test.log || true)
+          
+          if [ -n "$SKIPPED_TESTS" ]; then
+            echo "ERROR: The following real-tool tests were skipped:"
+            echo "$SKIPPED_TESTS"
+            echo "This indicates gitleaks or osv-scanner was not installed properly on the runner."
+            exit 1
+          fi
