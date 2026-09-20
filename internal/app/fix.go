@@ -16,8 +16,8 @@ import (
 var (
 	ErrFindingNotFound            = errors.New("finding not found")
 	ErrAutomaticMutationForbidden = errors.New("automatic mutation without approval is forbidden: host approval is required for all material code changes")
-	ErrDestructiveFixForbidden     = errors.New("destructive fix rejected without approval")
-	ErrBroadMutationForbidden      = errors.New("broad mutation rejected without approval: patch modifies files outside finding location scope")
+	ErrDestructiveFixForbidden    = errors.New("destructive fix rejected without approval")
+	ErrBroadMutationForbidden     = errors.New("broad mutation rejected without approval: patch modifies files outside finding location scope")
 )
 
 // FixContextArgs identifies the target repository and the specific finding

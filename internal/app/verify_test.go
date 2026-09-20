@@ -52,10 +52,10 @@ func TestVerificationFlow_LinksFindingPatchAndRun(t *testing.T) {
 				NormalizedSeverity: evidence.SeverityHigh,
 				NativeSeverity:     "high",
 				Locations:          []evidence.Location{{URI: "app.go"}},
-				Evidence:        evidence.FindingEvidence{Match: "vulnerable-token-12345"},
-				Confidence:      evidence.Confidence{Level: evidence.ConfidenceHigh, Rationale: "direct pattern match"},
-				Timestamps:      evidence.FindingTimestamps{DetectedAt: time.Now().UTC().Format(time.RFC3339)},
-				ChallengeStatus: evidence.ChallengeUnreviewed,
+				Evidence:           evidence.FindingEvidence{Match: "vulnerable-token-12345"},
+				Confidence:         evidence.Confidence{Level: evidence.ConfidenceHigh, Rationale: "direct pattern match"},
+				Timestamps:         evidence.FindingTimestamps{DetectedAt: time.Now().UTC().Format(time.RFC3339)},
+				ChallengeStatus:    evidence.ChallengeUnreviewed,
 			})
 			return []evidence.RunOutcome{{
 				Tool:     "secrets-scanner",
