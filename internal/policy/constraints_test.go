@@ -594,6 +594,112 @@ func TestConstraint3_IdenticalRecordedEvidenceEvaluatedRepeatedlyProducesIdentic
 	}
 }
 
+// Constraint 3: Identical recorded evidence evaluated repeatedly with a fixture that
+// exercises ordering. The existing fixture above uses a report where both required
+// adapters ran successfully, so unavailableRequired, missingRequired and
+// crashedOrTimedOutRequired are all empty — no ordering-sensitive list appears in the
+// verdict and the sorts on those lists are never exercised.
+//
+// This case forces multiple entries into those lists and into Uncovered so that
+// removing the sort.Strings calls on the named lists, replacing the required-adapter
+// loop with direct map iteration, or removing sortUncovered would produce different
+// output across iterations and cause the test to fail.
+func TestConstraint3_IdenticalRecordedEvidenceEvaluatedRepeatedlyProducesIdenticalVerdict_OrderingSensitiveFixture(t *testing.T) {
+	cfg := DefaultConfig()
+	// Four required adapters: two will be unavailable, one timed out, one missing.
+	// This guarantees unavailableRequired holds at least two names whose join order
+	// would vary if sort.Strings were removed and the list was built from map
+	// iteration. It also guarantees Uncovered.Unavailable holds multiple entries
+	// whose order would vary if sortUncovered were removed.
+	cfg.Adapters.Required = []string{"delta-tool", "alpha-tool", "gamma-tool", "beta-tool"}
+
+	exitMinus1 := -1
+	rep := evidence.Report{
+		SchemaVersion: "v1",
+		Target: evidence.TargetBinding{
+			Repository:  "https://example.invalid/test-repo",
+			Commit:      "0000000000000000000000000000000000000001",
+			Dirty:       false,
+			Fingerprint: "test",
+		},
+		// Runs arrive in reverse-alphabetical order to maximise sensitivity to
+		// sort removal: if the lists are filled from an unsorted source, the
+		// names appear backwards relative to the expected sorted output.
+		Runs: []evidence.RunOutcome{
+			{
+				Tool:        "gamma-tool",
+				ToolVersion: "v1",
+				Command:     "gamma-tool scan",
+				ExitCode:    -1,
+				Status:      evidence.StatusNotInstalled,
+				Findings:    []evidence.Finding{},
+			},
+			{
+				Tool:        "delta-tool",
+				ToolVersion: "v1",
+				Command:     "delta-tool scan",
+				ExitCode:    -1,
+				Status:      evidence.StatusUnavailable,
+				Findings:    []evidence.Finding{},
+			},
+			{
+				Tool:        "beta-tool",
+				ToolVersion: "v1",
+				Command:     "beta-tool scan",
+				ExitCode:    -1,
+				Status:      evidence.StatusUnavailable,
+				Findings:    []evidence.Finding{},
+			},
+		},
+		// alpha-tool is required but absent from Runs entirely → missingRequired.
+		// Uncovered carries two pre-existing unavailable entries in reverse order
+		// to verify sortUncovered is exercised: without it the join would preserve
+		// the original order and may differ from the sorted expectation.
+		Uncovered: evidence.UncoveredChecks{
+			Skipped:  []evidence.UncoveredCheck{},
+			Crashed:  []evidence.UncoveredCheck{},
+			TimedOut: []evidence.UncoveredCheck{},
+			Unavailable: []evidence.UncoveredCheck{
+				{Tool: "zz-optional", Command: "zz-optional scan", Reason: "not installed", ExitCode: &exitMinus1},
+				{Tool: "aa-optional", Command: "aa-optional scan", Reason: "not installed", ExitCode: &exitMinus1},
+			},
+		},
+		Timestamps: evidence.ReportTimestamps{
+			StartedAt:   "2026-01-01T00:00:00Z",
+			CompletedAt: "2026-01-01T00:05:00Z",
+		},
+	}
+
+	// Baseline evaluation.
+	baselineVerdict := Evaluate(cfg, rep)
+	baselineBytes, err := json.Marshal(baselineVerdict)
+	if err != nil {
+		t.Fatalf("marshal baseline verdict: %v", err)
+	}
+
+	// Verify the verdict actually exercises the ordering-sensitive lists so that
+	// a reviewer can confirm this test would catch missing sorts.
+	if baselineVerdict.Outcome != evidence.OutcomeIncomplete {
+		t.Fatalf("fixture misconfigured: want OutcomeIncomplete, got %q", baselineVerdict.Outcome)
+	}
+
+	// 100 repeated evaluations catch map-iteration nondeterminism: if any of the
+	// sort.Strings calls on the ordering-sensitive lists were removed, the joined
+	// names in Reason or the Tool ordering in Uncovered would vary across runs.
+	const iterations = 100
+	for i := 0; i < iterations; i++ {
+		v := Evaluate(cfg, rep)
+		vBytes, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("iteration %d marshal failed: %v", i, err)
+		}
+		if !bytes.Equal(baselineBytes, vBytes) {
+			t.Fatalf("ACCEPTANCE FAILURE: verdict depends on iteration order at iteration %d:\nbaseline: %s\ngot:      %s",
+				i, baselineBytes, vBytes)
+		}
+	}
+}
+
 // Constraint 4: Human-required classes cannot be cleared by an agent.
 func TestConstraint4_HumanRequiredClassesCannotBeClearedByAgent(t *testing.T) {
 	cfg := DefaultConfig()
