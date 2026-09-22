@@ -69,6 +69,34 @@ func (e *Engine) Verify(ctx context.Context, args VerifyArgs) (evidence.Report, 
 		}
 	}
 
+	if found {
+		if reviews, err := st.GetReviews(); err == nil {
+			if rev, ok := reviews[targetFinding.Fingerprint]; ok {
+				if rev.ChallengeStatus != "" {
+					targetFinding.ChallengeStatus = rev.ChallengeStatus
+				}
+				if rev.Reason != "" {
+					targetFinding.ChallengeRationale = rev.Reason
+				}
+				if rev.ReviewerType != "" {
+					targetFinding.Reviewer = evidence.Reviewer{
+						Type:     rev.ReviewerType,
+						Identity: rev.ReviewerIdentity,
+					}
+				}
+				if rev.FixPatch != nil {
+					targetFinding.FixPatch = rev.FixPatch
+				}
+				if len(rev.VerificationRuns) > 0 {
+					targetFinding.VerificationRuns = rev.VerificationRuns
+				}
+				if rev.Disposition != "" {
+					targetFinding.Disposition = rev.Disposition
+				}
+			}
+		}
+	}
+
 	if !found {
 		initialRep, err := e.ScanWithOptions(ctx, absDir, ScanOptions{Scope: "quick"})
 		if err != nil {
@@ -279,6 +307,22 @@ func createVerificationReport(target evidence.TargetBinding, runID string, outco
 	}
 	if finding.VerificationRuns == nil {
 		finding.VerificationRuns = []evidence.VerificationRun{}
+	}
+	for i := range runs {
+		if runs[i].Findings == nil {
+			runs[i].Findings = []evidence.Finding{}
+		}
+		for j := range runs[i].Findings {
+			if runs[i].Findings[j].DuplicateFindingIDs == nil {
+				runs[i].Findings[j].DuplicateFindingIDs = []string{}
+			}
+			if runs[i].Findings[j].RelatedFindingIDs == nil {
+				runs[i].Findings[j].RelatedFindingIDs = []string{}
+			}
+			if runs[i].Findings[j].VerificationRuns == nil {
+				runs[i].Findings[j].VerificationRuns = []evidence.VerificationRun{}
+			}
+		}
 	}
 	return evidence.Report{
 		SchemaVersion: "v1",

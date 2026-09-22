@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Unattended agent loop integration covering the complete scan -> challenge -> fix -> verify -> report workflow over MCP with lineage preservation.
+- Rigorous determinism verification asserting identical recorded evidence and configuration produce identical verdicts across repeated evaluations.
+- Requirement assertion ensuring missing or removed required adapters produce Incomplete and name the missing check by name in the report.
 - Fix context handoff via `clearance_get_fix_context` (MCP) and `fix-context` (CLI) returning targeted evidence, remediation, and constraints for a single finding without whole-report exposure.
 - Targeted rerun verification via `clearance_verify` (MCP) and `verify` (CLI) executing minimum affected checks and writing finding -> patch reference -> verification run lineage into the stored record.
 - Invariant enforcement: findings cannot be marked fixed directly; findings transition to fixed solely through new recorded evidence from a successful verification rerun.

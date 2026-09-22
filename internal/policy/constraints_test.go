@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/aniklavida/code-clearance/internal/evidence"
@@ -70,6 +72,20 @@ func TestConstraint1_UnavailableRequiredAdapterMustProduceIncompleteNeverPass(t 
 			if verdict.Outcome == evidence.OutcomeCleared || verdict.Outcome == evidence.OutcomeClearedWithResidualRisk {
 				t.Fatalf("VIOLATION: unavailable required adapter produced passing verdict: %q", verdict.Outcome)
 			}
+
+			// Invariant: The verdict reason MUST name the missing check by name
+			if !strings.Contains(verdict.Reason, "gitleaks") {
+				t.Fatalf("verdict reason %q does not name missing required check 'gitleaks'", verdict.Reason)
+			}
+
+			// Invariant: Applying the verdict to a report preserves the name of the missing check
+			ApplyVerdict(cfg, &report)
+			if report.Outcome != evidence.OutcomeIncomplete {
+				t.Fatalf("report outcome %q, want %q", report.Outcome, evidence.OutcomeIncomplete)
+			}
+			if !strings.Contains(report.Reason, "gitleaks") {
+				t.Fatalf("report reason %q does not name missing required check 'gitleaks'", report.Reason)
+			}
 		})
 	}
 
@@ -101,6 +117,90 @@ func TestConstraint1_UnavailableRequiredAdapterMustProduceIncompleteNeverPass(t 
 		}
 		if verdict.Outcome == evidence.OutcomeCleared {
 			t.Fatal("missing required adapter produced OutcomeCleared!")
+		}
+
+		// Invariant: The verdict reason MUST name the missing check by name
+		if !strings.Contains(verdict.Reason, "gitleaks") {
+			t.Fatalf("verdict reason %q does not name missing required check 'gitleaks'", verdict.Reason)
+		}
+
+		// Invariant: Applying verdict to report names the missing check in report.Reason
+		ApplyVerdict(cfg, &report)
+		if report.Outcome != evidence.OutcomeIncomplete {
+			t.Fatalf("report outcome %q, want %q", report.Outcome, evidence.OutcomeIncomplete)
+		}
+		if !strings.Contains(report.Reason, "gitleaks") {
+			t.Fatalf("report reason %q does not name missing required check 'gitleaks'", report.Reason)
+		}
+	})
+
+	t.Run("removing-required-adapter-turns-cleared-into-incomplete-and-names-missing-check", func(t *testing.T) {
+		report := evidence.Report{
+			SchemaVersion: "v1",
+			Target: evidence.TargetBinding{
+				Repository:  "https://github.com/example/repo",
+				Commit:      "abcdef123456",
+				Dirty:       false,
+				Fingerprint: "clean",
+			},
+			Runs: []evidence.RunOutcome{
+				{
+					Tool:        "gitleaks",
+					ToolVersion: "v8.30.1",
+					Command:     "gitleaks detect",
+					ExitCode:    0,
+					Status:      evidence.StatusOK,
+					Findings:    []evidence.Finding{},
+				},
+				{
+					Tool:        "osv-scanner",
+					ToolVersion: "v2.5.1",
+					Command:     "osv-scanner scan",
+					ExitCode:    0,
+					Status:      evidence.StatusOK,
+					Findings:    []evidence.Finding{},
+				},
+			},
+		}
+
+		// When both required adapters pass cleanly, outcome MUST be Cleared
+		initialVerdict := Evaluate(cfg, report)
+		if initialVerdict.Outcome != evidence.OutcomeCleared {
+			t.Fatalf("expected initial clean run to be Cleared, got %q", initialVerdict.Outcome)
+		}
+		ApplyVerdict(cfg, &report)
+		if report.Outcome != evidence.OutcomeCleared {
+			t.Fatalf("expected applied report outcome to be Cleared, got %q", report.Outcome)
+		}
+
+		// Now remove the required adapter 'gitleaks' from runs entirely
+		report.Runs = []evidence.RunOutcome{
+			{
+				Tool:        "osv-scanner",
+				ToolVersion: "v2.5.1",
+				Command:     "osv-scanner scan",
+				ExitCode:    0,
+				Status:      evidence.StatusOK,
+				Findings:    []evidence.Finding{},
+			},
+		}
+
+		// Invariant: Removing a required adapter turns Cleared into Incomplete
+		verdict := Evaluate(cfg, report)
+		if verdict.Outcome != evidence.OutcomeIncomplete {
+			t.Fatalf("removing required adapter produced %q, want %q", verdict.Outcome, evidence.OutcomeIncomplete)
+		}
+		if !strings.Contains(verdict.Reason, "gitleaks") {
+			t.Fatalf("verdict reason %q does not name the missing check 'gitleaks'", verdict.Reason)
+		}
+
+		ApplyVerdict(cfg, &report)
+		if report.Outcome != evidence.OutcomeIncomplete {
+			t.Fatalf("applied report outcome %q, want %q", report.Outcome, evidence.OutcomeIncomplete)
+		}
+		// Invariant: The report NAMES the check that went missing
+		if !strings.Contains(report.Reason, "gitleaks") {
+			t.Fatalf("report reason %q does not name the missing check 'gitleaks'", report.Reason)
 		}
 	})
 
@@ -426,6 +526,177 @@ func TestConstraint3_IdenticalEvidenceAndConfigProducesByteIdenticalVerdicts(t *
 
 	if !bytes.Equal(b1, b3) {
 		t.Fatalf("ACCEPTANCE FAILURE: verdicts differ across run order permutations:\nb1: %s\nb3: %s", b1, b3)
+	}
+}
+
+// Constraint 3: Identical recorded evidence and configuration must produce an identical outcome.
+// No clock, no map iteration order and no model output may move the verdict.
+// This test evaluates the same recorded evidence repeatedly (100 iterations) and compares
+// the full evaluated result (not just outcome string) to catch map-iteration nondeterminism.
+func TestConstraint3_IdenticalRecordedEvidenceEvaluatedRepeatedlyProducesIdenticalVerdict(t *testing.T) {
+	sampleReportPath := filepath.Join("..", "..", "testdata", "sample-report.json")
+	reportData, err := os.ReadFile(sampleReportPath)
+	if err != nil {
+		t.Fatalf("read sample report: %v", err)
+	}
+
+	var rep evidence.Report
+	if err := json.Unmarshal(reportData, &rep); err != nil {
+		t.Fatalf("unmarshal sample report: %v", err)
+	}
+
+	sampleConfigPath := filepath.Join("..", "..", "testdata", "sample-clearance.json")
+	cfg, err := Load(sampleConfigPath)
+	if err != nil {
+		t.Fatalf("load sample clearance config: %v", err)
+	}
+
+	// 1. Evaluate baseline result
+	baselineVerdict := Evaluate(cfg, rep)
+	baselineBytes, err := json.Marshal(baselineVerdict)
+	if err != nil {
+		t.Fatalf("marshal baseline verdict: %v", err)
+	}
+
+	var firstAppliedBytes []byte
+
+	// 2. Evaluate 100 times to catch map-iteration order nondeterminism and assert identical results
+	const iterations = 100
+	for i := 0; i < iterations; i++ {
+		v := Evaluate(cfg, rep)
+		vBytes, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("iteration %d marshal failed: %v", i, err)
+		}
+
+		// Invariant: compare full evaluated result, not just outcome string
+		if !bytes.Equal(baselineBytes, vBytes) {
+			t.Fatalf("ACCEPTANCE FAILURE: verdict differed across iterations at iteration %d:\nbaseline: %s\ngot:      %s",
+				i, baselineBytes, vBytes)
+		}
+		if !reflect.DeepEqual(baselineVerdict, v) {
+			t.Fatalf("ACCEPTANCE FAILURE: evaluated struct not deeply equal at iteration %d:\nbaseline: %+v\ngot:      %+v",
+				i, baselineVerdict, v)
+		}
+
+		// Also verify ApplyVerdict produces byte-identical reports across repeated applications
+		repCopy := rep
+		ApplyVerdict(cfg, &repCopy)
+		repBytes, err := json.Marshal(repCopy)
+		if err != nil {
+			t.Fatalf("iteration %d marshal applied report: %v", i, err)
+		}
+		if i == 0 {
+			firstAppliedBytes = repBytes
+		} else if !bytes.Equal(firstAppliedBytes, repBytes) {
+			t.Fatalf("ACCEPTANCE FAILURE: applied report differed at iteration %d", i)
+		}
+	}
+}
+
+// Constraint 3: Identical recorded evidence evaluated repeatedly with a fixture that
+// exercises ordering. The existing fixture above uses a report where both required
+// adapters ran successfully, so unavailableRequired, missingRequired and
+// crashedOrTimedOutRequired are all empty — no ordering-sensitive list appears in the
+// verdict and the sorts on those lists are never exercised.
+//
+// This case forces multiple entries into those lists and into Uncovered so that
+// removing the sort.Strings calls on the named lists, replacing the required-adapter
+// loop with direct map iteration, or removing sortUncovered would produce different
+// output across iterations and cause the test to fail.
+func TestConstraint3_IdenticalRecordedEvidenceEvaluatedRepeatedlyProducesIdenticalVerdict_OrderingSensitiveFixture(t *testing.T) {
+	cfg := DefaultConfig()
+	// Four required adapters: two will be unavailable, one timed out, one missing.
+	// This guarantees unavailableRequired holds at least two names whose join order
+	// would vary if sort.Strings were removed and the list was built from map
+	// iteration. It also guarantees Uncovered.Unavailable holds multiple entries
+	// whose order would vary if sortUncovered were removed.
+	cfg.Adapters.Required = []string{"delta-tool", "alpha-tool", "gamma-tool", "beta-tool"}
+
+	exitMinus1 := -1
+	rep := evidence.Report{
+		SchemaVersion: "v1",
+		Target: evidence.TargetBinding{
+			Repository:  "https://example.invalid/test-repo",
+			Commit:      "0000000000000000000000000000000000000001",
+			Dirty:       false,
+			Fingerprint: "test",
+		},
+		// Runs arrive in reverse-alphabetical order to maximise sensitivity to
+		// sort removal: if the lists are filled from an unsorted source, the
+		// names appear backwards relative to the expected sorted output.
+		Runs: []evidence.RunOutcome{
+			{
+				Tool:        "gamma-tool",
+				ToolVersion: "v1",
+				Command:     "gamma-tool scan",
+				ExitCode:    -1,
+				Status:      evidence.StatusNotInstalled,
+				Findings:    []evidence.Finding{},
+			},
+			{
+				Tool:        "delta-tool",
+				ToolVersion: "v1",
+				Command:     "delta-tool scan",
+				ExitCode:    -1,
+				Status:      evidence.StatusUnavailable,
+				Findings:    []evidence.Finding{},
+			},
+			{
+				Tool:        "beta-tool",
+				ToolVersion: "v1",
+				Command:     "beta-tool scan",
+				ExitCode:    -1,
+				Status:      evidence.StatusUnavailable,
+				Findings:    []evidence.Finding{},
+			},
+		},
+		// alpha-tool is required but absent from Runs entirely → missingRequired.
+		// Uncovered carries two pre-existing unavailable entries in reverse order
+		// to verify sortUncovered is exercised: without it the join would preserve
+		// the original order and may differ from the sorted expectation.
+		Uncovered: evidence.UncoveredChecks{
+			Skipped:  []evidence.UncoveredCheck{},
+			Crashed:  []evidence.UncoveredCheck{},
+			TimedOut: []evidence.UncoveredCheck{},
+			Unavailable: []evidence.UncoveredCheck{
+				{Tool: "zz-optional", Command: "zz-optional scan", Reason: "not installed", ExitCode: &exitMinus1},
+				{Tool: "aa-optional", Command: "aa-optional scan", Reason: "not installed", ExitCode: &exitMinus1},
+			},
+		},
+		Timestamps: evidence.ReportTimestamps{
+			StartedAt:   "2026-01-01T00:00:00Z",
+			CompletedAt: "2026-01-01T00:05:00Z",
+		},
+	}
+
+	// Baseline evaluation.
+	baselineVerdict := Evaluate(cfg, rep)
+	baselineBytes, err := json.Marshal(baselineVerdict)
+	if err != nil {
+		t.Fatalf("marshal baseline verdict: %v", err)
+	}
+
+	// Verify the verdict actually exercises the ordering-sensitive lists so that
+	// a reviewer can confirm this test would catch missing sorts.
+	if baselineVerdict.Outcome != evidence.OutcomeIncomplete {
+		t.Fatalf("fixture misconfigured: want OutcomeIncomplete, got %q", baselineVerdict.Outcome)
+	}
+
+	// 100 repeated evaluations catch map-iteration nondeterminism: if any of the
+	// sort.Strings calls on the ordering-sensitive lists were removed, the joined
+	// names in Reason or the Tool ordering in Uncovered would vary across runs.
+	const iterations = 100
+	for i := 0; i < iterations; i++ {
+		v := Evaluate(cfg, rep)
+		vBytes, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("iteration %d marshal failed: %v", i, err)
+		}
+		if !bytes.Equal(baselineBytes, vBytes) {
+			t.Fatalf("ACCEPTANCE FAILURE: verdict depends on iteration order at iteration %d:\nbaseline: %s\ngot:      %s",
+				i, baselineBytes, vBytes)
+		}
 	}
 }
 
