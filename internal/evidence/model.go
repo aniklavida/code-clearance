@@ -303,6 +303,15 @@ type ReportTimestamps struct {
 
 // Report captures the full clearance scan run, binding all adapter outcomes
 // and findings to the target tree state.
+//
+// Schema versioning: Report is the wire contract described by
+// schemas/report.schema.json ($id .../v1/report.schema.json) and identified by
+// SchemaVersion. Any change that breaks an existing consumer (renaming or
+// removing a field, tightening a type, making an optional field required)
+// requires a version bump and a migration note in schemas/COMPATIBILITY.md.
+// Adding a purely optional field does not. The invariants in that document —
+// notably that an unavailable required check can never be represented as a
+// pass — may never be loosened in any version.
 type Report struct {
 	SchemaVersion string           `json:"schema_version"`
 	Target        TargetBinding    `json:"target"`

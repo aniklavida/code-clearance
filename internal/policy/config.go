@@ -2,11 +2,19 @@ package policy
 
 import (
 	"encoding/json"
-	"github.com/aniklavida/code-clearance/internal/evidence"
+	"fmt"
 	"os"
+
+	"github.com/aniklavida/code-clearance/internal/evidence"
 )
 
 // Config models the clearance.yaml configuration file.
+//
+// Schema versioning: the configuration contract is versioned by Config.Version
+// and by schemas/clearance.schema.json ($id .../v1/clearance.schema.json).
+// Any change that breaks an existing consumer MUST bump that version and add a
+// migration entry in MigrateConfig and a note in schemas/COMPATIBILITY.md.
+// Purely optional additions do not bump the version.
 type Config struct {
 	Version  string         `json:"version" yaml:"version"`
 	Adapters AdaptersConfig `json:"adapters" yaml:"adapters"`
@@ -81,6 +89,11 @@ type CommandRule struct {
 type CommandsConfig struct {
 	Required []CommandRule `json:"required" yaml:"required"`
 	Optional []CommandRule `json:"optional" yaml:"optional"`
+	// Allow lists extra executable names a repository command may invoke,
+	// beyond the built-in default allowlist. It is additive, never a way to
+	// permit shell invocation, and it is an optional field so adding it did
+	// not require a schema version bump.
+	Allow []string `json:"allow,omitempty" yaml:"allow,omitempty"`
 }
 
 type LimitsConfig struct {
@@ -284,15 +297,21 @@ func (c Config) ActiveProfile(scopeName string) Profile {
 	return p
 }
 
-// Load loads a clearance configuration from a JSON file.
+// Load loads a clearance configuration from a JSON file, migrating it to the
+// current schema generation first. An unsupported version is rejected with a
+// clear message rather than being accepted on a guess.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
 	}
-	var c Config
-	if err := json.Unmarshal(data, &c); err != nil {
+	migrated, err := MigrateConfig(data)
+	if err != nil {
 		return Config{}, err
+	}
+	var c Config
+	if err := json.Unmarshal(migrated, &c); err != nil {
+		return Config{}, fmt.Errorf("parse migrated clearance configuration: %w", err)
 	}
 	return c, nil
 }

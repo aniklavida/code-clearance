@@ -65,6 +65,33 @@ The following changes are strictly prohibited within major version `v1` and requ
 
 ## 5. Migration and Deprecation Policy
 
+**The version-bump rule.** Within major version `v1`, a change that can break an
+existing consumer — renaming or removing a field, tightening a type, or making
+an optional field required — is prohibited. If such a change is unavoidable it
+must (a) bump the schema version (`v2`), (b) add a migration note here, and
+(c) land a migration entry point. Purely optional additions (a new optional
+field whose absence preserves prior behavior) do not require a bump; adding
+`commands.allow` to the configuration schema was one such addition.
+
+The rule is mirrored in code so it is visible where schema types are defined:
+`policy.Config` and `evidence.Report` both carry comments pointing at this
+document, and `policy.CurrentConfigVersion` states the canonical generation.
+
+**Migration entry point.** `policy.MigrateConfig` upgrades a configuration
+document to the current generation before it is loaded; `policy.Load` calls it
+automatically. Two migrations are implemented end to end and covered by named
+tests:
+
+- Version normalisation: an unversioned document or the `"1.0.0"` alias is
+  rewritten to `v1`.
+- Legacy scope shape: a scope whose `adapters` is a bare array of names, or
+  whose `commands` is a bare array of command strings, is rewritten to the
+  object form the current schema defines.
+
+An unknown (usually newer) version is rejected with an actionable error naming
+the version and the supported generation, rather than being guessed at, because
+silently ignoring configuration fields would change the security verdict.
+
 When a feature or field is superseded:
 1. The old field will be marked `deprecated: true` in the schema documentation for at least one minor release cycle.
 2. Runtime tools will continue to accept and emit the deprecated field alongside any replacement.

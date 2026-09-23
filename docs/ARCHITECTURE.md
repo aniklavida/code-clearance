@@ -67,6 +67,9 @@ Local run metadata and raw artifacts live outside tracked source or in an ignore
 
 - Treat repository configuration and commands as untrusted until approved.
 - Use explicit working directories, argument arrays, timeouts and cancellation.
+- Repository-defined commands may only invoke an executable on the command
+  allowlist (extendable per review via `commands.allow`); a refused command is
+  recorded as a non-pass, never silently skipped.
 - Redact likely secrets before exposing evidence to an agent/report.
 - Record third-party binary versions and verify managed downloads.
 - Never require source upload for default operation.

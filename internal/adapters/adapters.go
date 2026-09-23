@@ -33,7 +33,7 @@ var (
 // DetectToolVersion queries the tool's binary for its version string and validates it.
 func DetectToolVersion(ctx context.Context, tool string) (string, error) {
 	if _, err := exec.LookPath(tool); err != nil {
-		return "", fmt.Errorf("tool %s: %w", tool, app.ErrNotInstalled)
+		return "", fmt.Errorf("tool %s: %w; install %s or remove it from adapters.required, then rerun", tool, app.ErrNotInstalled, tool)
 	}
 
 	var args []string
@@ -146,7 +146,7 @@ func (a *GitleaksAdapter) Availability(ctx context.Context) Availability {
 	if err != nil {
 		return Availability{
 			Available: false,
-			Reason:    "gitleaks executable missing on PATH",
+			Reason:    "gitleaks executable missing on PATH; install gitleaks or move it from adapters.required to adapters.optional, then rerun",
 		}
 	}
 	if !a.versionOverridden {
@@ -294,7 +294,7 @@ func (a *OSVScannerAdapter) Availability(ctx context.Context) Availability {
 	if err != nil {
 		return Availability{
 			Available: false,
-			Reason:    "osv-scanner executable missing on PATH",
+			Reason:    "osv-scanner executable missing on PATH; install osv-scanner or move it from adapters.required to adapters.optional, then rerun",
 		}
 	}
 	if !a.versionOverridden {
@@ -391,6 +391,7 @@ func (a *OSVScannerAdapter) Run(ctx context.Context, target string) evidence.Run
 	switch {
 	case res.Err != nil:
 		outcome.Status = evidence.StatusNotInstalled
+		outcome.StderrTail = res.Diagnostic()
 		return outcome
 	case res.TimedOut:
 		outcome.Status = evidence.StatusTimedOut
@@ -461,6 +462,7 @@ func finishFromSarifFile(tool, version, sarifPath string, res app.Result, sev no
 	switch {
 	case res.Err != nil:
 		outcome.Status = evidence.StatusNotInstalled
+		outcome.StderrTail = res.Diagnostic()
 		return outcome
 	case res.TimedOut:
 		outcome.Status = evidence.StatusTimedOut
@@ -553,7 +555,7 @@ func (a *SemgrepAdapter) Availability(ctx context.Context) Availability {
 	if err != nil {
 		return Availability{
 			Available: false,
-			Reason:    "semgrep executable missing on PATH",
+			Reason:    "semgrep executable missing on PATH; install semgrep or move it from adapters.required to adapters.optional, then rerun",
 		}
 	}
 	if !a.versionOverridden {
@@ -639,6 +641,7 @@ func (a *SemgrepAdapter) Run(ctx context.Context, targetDir string) evidence.Run
 	switch {
 	case res.Err != nil:
 		outcome.Status = evidence.StatusNotInstalled
+		outcome.StderrTail = res.Diagnostic()
 		return outcome
 	case res.TimedOut:
 		outcome.Status = evidence.StatusTimedOut
@@ -730,7 +733,7 @@ func (a *TrivyAdapter) Availability(ctx context.Context) Availability {
 	if err != nil {
 		return Availability{
 			Available: false,
-			Reason:    "trivy executable missing on PATH",
+			Reason:    "trivy executable missing on PATH; install trivy or move it from adapters.required to adapters.optional, then rerun",
 		}
 	}
 	if !a.versionOverridden {
@@ -815,6 +818,7 @@ func (a *TrivyAdapter) Run(ctx context.Context, targetDir string) evidence.RunOu
 	switch {
 	case res.Err != nil:
 		outcome.Status = evidence.StatusNotInstalled
+		outcome.StderrTail = res.Diagnostic()
 		return outcome
 	case res.TimedOut:
 		outcome.Status = evidence.StatusTimedOut

