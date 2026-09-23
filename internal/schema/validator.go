@@ -196,6 +196,18 @@ func FindSchemaPath(name string) (string, error) {
 		filepath.Join("..", "schemas", name),
 		filepath.Join("..", "..", "schemas", name),
 		filepath.Join("..", "..", "..", "schemas", name),
+		filepath.Join("..", "..", "..", "..", "schemas", name),
+	}
+	if envDir := os.Getenv("CODE_CLEARANCE_SCHEMAS_DIR"); envDir != "" {
+		candidates = append([]string{filepath.Join(envDir, name)}, candidates...)
+	}
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "schemas", name),
+			filepath.Join(exeDir, "..", "schemas", name),
+			filepath.Join(exeDir, "..", "..", "schemas", name),
+		)
 	}
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {

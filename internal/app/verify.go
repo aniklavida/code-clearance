@@ -132,9 +132,11 @@ func (e *Engine) Verify(ctx context.Context, args VerifyArgs) (evidence.Report, 
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	cfg := policy.DefaultConfig()
-	cfgPath := filepath.Join(absDir, "clearance.json")
-	if loadedCfg, err := policy.Load(cfgPath); err == nil {
-		cfg = loadedCfg
+	cfgPath := policy.FindConfigFile(absDir)
+	if cfgPath != "" {
+		if loadedCfg, err := policy.Load(cfgPath); err == nil {
+			cfg = loadedCfg
+		}
 	}
 
 	// 4. Run targeted rerun of MINIMUM affected checks

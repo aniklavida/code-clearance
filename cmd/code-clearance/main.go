@@ -33,6 +33,12 @@ func main() {
 	defer cancel()
 
 	switch os.Args[1] {
+	case "init":
+		os.Exit(runInit(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "doctor":
+		os.Exit(runDoctor(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "mcp":
+		os.Exit(runMCP(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "run", "clearance_run":
 		os.Exit(runClearanceRun(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "report", "clearance_report":
@@ -69,6 +75,9 @@ Usage:
   code-clearance <command> [flags] [dir]
 
 Commands:
+  init            Detect repository stack and propose clearance.yaml
+  doctor          Verify engine, scanner adapters, commands and MCP
+  mcp             Manage and verify MCP host registration
   run             Run the full clearance pipeline using a profile
   report          Re-render the most recently persisted run's report
   scan            Run clearance scanners and report evidence
@@ -95,7 +104,21 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		targetDir = fs.Arg(0)
 	}
 
-	report, err := app.ScanWithOptions(ctx, targetDir, app.ScanOptions{Scope: *scopeFlag})
+	opts := app.ScanOptions{Scope: *scopeFlag}
+	cfgPath := policy.FindConfigFile(targetDir)
+	if cfgPath != "" {
+		if data, err := os.ReadFile(cfgPath); err == nil {
+			if valErr := schema.ValidateClearance(data); valErr != nil {
+				fmt.Fprintf(stderr, "invalid %s: %v\n", filepath.Base(cfgPath), valErr)
+				return 1
+			}
+			if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
+				opts.Config = &cfg
+			}
+		}
+	}
+
+	report, err := app.ScanWithOptions(ctx, targetDir, opts)
 	if err != nil {
 		fmt.Fprintf(stderr, "scan error: %v\n", err)
 		return 1
@@ -322,14 +345,16 @@ func runClearanceRun(ctx context.Context, args []string, stdout, stderr io.Write
 	}
 
 	opts := app.ScanOptions{Scope: *profile}
-	cfgPath := filepath.Join(targetDir, "clearance.json")
-	if data, err := os.ReadFile(cfgPath); err == nil {
-		if valErr := schema.ValidateClearance(data); valErr != nil {
-			fmt.Fprintf(stderr, "invalid clearance.json: %v\n", valErr)
-			return 1
-		}
-		if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
-			opts.Config = &cfg
+	cfgPath := policy.FindConfigFile(targetDir)
+	if cfgPath != "" {
+		if data, err := os.ReadFile(cfgPath); err == nil {
+			if valErr := schema.ValidateClearance(data); valErr != nil {
+				fmt.Fprintf(stderr, "invalid %s: %v\n", filepath.Base(cfgPath), valErr)
+				return 1
+			}
+			if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
+				opts.Config = &cfg
+			}
 		}
 	}
 

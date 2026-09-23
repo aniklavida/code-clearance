@@ -160,13 +160,15 @@ func ClearanceRun(ctx context.Context, req *mcp.CallToolRequest, args ClearanceR
 
 	opts := app.ScanOptions{Scope: scope}
 
-	cfgPath := filepath.Join(args.TargetDir, "clearance.json")
-	if data, err := os.ReadFile(cfgPath); err == nil {
-		if valErr := schema.ValidateClearance(data); valErr != nil {
-			return nil, evidence.Report{}, valErr
-		}
-		if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
-			opts.Config = &cfg
+	cfgPath := policy.FindConfigFile(args.TargetDir)
+	if cfgPath != "" {
+		if data, err := os.ReadFile(cfgPath); err == nil {
+			if valErr := schema.ValidateClearance(data); valErr != nil {
+				return nil, evidence.Report{}, valErr
+			}
+			if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
+				opts.Config = &cfg
+			}
 		}
 	}
 
