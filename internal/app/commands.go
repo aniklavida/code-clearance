@@ -88,6 +88,68 @@ func ParseCommand(rawCommand string, repoDir string) (string, []string, error) {
 	return cmdName, tokens[1:], nil
 }
 
+// DefaultCommandAllowlist lists the executables a repository-defined clearance
+// command may invoke without an explicit extension. It is defence in depth on
+// top of argument-vector execution, not a sandbox: it stops a hostile config
+// from silently invoking an arbitrary binary such as a downloader or an
+// interpreter, while the no-shell parser stops a string from becoming a shell.
+var DefaultCommandAllowlist = []string{
+	// Go
+	"go", "gofmt", "goimports", "golangci-lint", "staticcheck", "govulncheck",
+	// JavaScript / TypeScript
+	"node", "npm", "npx", "yarn", "pnpm", "bun", "deno", "tsc", "eslint", "prettier", "vitest", "jest",
+	// Python
+	"python", "python3", "pip", "pip3", "pytest", "mypy", "ruff", "black", "flake8",
+	// Rust
+	"cargo", "rustc", "clippy-driver",
+	// JVM, .NET and generic build tools
+	"mvn", "gradle", "gradlew", "dotnet", "make", "cmake", "bazel", "ant",
+	// Ruby / PHP
+	"ruby", "bundle", "rake", "php", "composer",
+}
+
+// CommandAllowed reports whether a repository command may invoke the named
+// executable. Only a bare name (no path separator) is accepted, so a config
+// cannot point the allowlist at a repository-supplied binary such as ./go; the
+// extra argument lets a reviewed config extend the built-in list.
+func CommandAllowed(bin string, extra []string) bool {
+	if bin == "" {
+		return false
+	}
+	if strings.ContainsAny(bin, `/\`) {
+		return false
+	}
+	base := strings.ToLower(bin)
+	for _, a := range DefaultCommandAllowlist {
+		if strings.ToLower(a) == base {
+			return true
+		}
+	}
+	for _, a := range extra {
+		if strings.ToLower(a) == base {
+			return true
+		}
+	}
+	return false
+}
+
+// DisallowedCommandOutcome records, honestly, a repository command that the
+// allowlist refused. It is deliberately a non-pass status so that a required
+// command which is refused produces Incomplete rather than a silent skip, and
+// its message names the command and the safe next action.
+func DisallowedCommandOutcome(cmdRule policy.CommandRule, bin string) evidence.RunOutcome {
+	return evidence.RunOutcome{
+		Tool:        "command:" + cmdRule.Name,
+		ToolVersion: "repository-rule",
+		Command:     cmdRule.Run,
+		ExitCode:    -1,
+		Status:      evidence.StatusCrashed,
+		StderrTail: fmt.Sprintf(
+			"command %q is not on the command allowlist; review it and add %q to commands.allow, or remove it from clearance commands, then rerun",
+			cmdRule.Run, bin),
+	}
+}
+
 func isShellBinary(base string) bool {
 	switch strings.TrimSuffix(base, ".exe") {
 	case "sh", "bash", "zsh", "csh", "tcsh", "ksh", "dash", "cmd", "powershell", "pwsh":
@@ -154,7 +216,7 @@ func RunRepositoryCommand(ctx context.Context, cmdRule policy.CommandRule, repoD
 			Command:     cmdRule.Run,
 			ExitCode:    -1,
 			Status:      evidence.StatusCrashed,
-			StderrTail:  err.Error(),
+			StderrTail:  fmt.Sprintf("command %q rejected: %v; fix or remove it from clearance commands, then rerun", cmdRule.Run, err),
 		}
 		return outcome, nil, err
 	}
@@ -191,6 +253,17 @@ func RunRepositoryCommand(ctx context.Context, cmdRule policy.CommandRule, repoD
 		outcome.Status = evidence.StatusCrashed
 	default:
 		outcome.Status = evidence.StatusOK
+	}
+
+	// Attach an actionable diagnostic naming the command and the safe next
+	// step, keeping the captured stderr trailing it. A bare exit status is
+	// not enough for a reader to act on.
+	if d := res.Diagnostic(); d != "" {
+		if outcome.StderrTail != "" {
+			outcome.StderrTail = d + "\n" + outcome.StderrTail
+		} else {
+			outcome.StderrTail = d
+		}
 	}
 
 	return outcome, res.Stdout, nil

@@ -168,16 +168,23 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 		})
 	}
 
-	// Repository command tasks (from clearance.yaml)
+	// Repository command tasks (from clearance.yaml). A repository command is
+	// untrusted: it runs with an explicit argument vector, and its executable
+	// must be on the command allowlist. A refused command is recorded as a
+	// non-pass so a required check cannot silently disappear.
 	for _, cmdRule := range plan.Commands {
 		rule := cmdRule
 		cmdName := "command:" + rule.Name
 		if len(opts.TargetTools) > 0 && !containsString(opts.TargetTools, cmdName) && !containsString(opts.TargetTools, rule.Name) {
 			continue
 		}
+		allow := prof.Commands.Allow
 		tasks = append(tasks, executionTask{
 			name: cmdName,
 			fn: func(c context.Context) []evidence.RunOutcome {
+				if bin, _, perr := ParseCommand(rule.Run, absDir); perr == nil && !CommandAllowed(bin, allow) {
+					return []evidence.RunOutcome{DisallowedCommandOutcome(rule, bin)}
+				}
 				outcome, _, _ := RunRepositoryCommand(c, rule, absDir)
 				return []evidence.RunOutcome{outcome}
 			},

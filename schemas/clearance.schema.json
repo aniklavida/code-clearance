@@ -91,6 +91,13 @@
           "items": {
             "$ref": "#/$defs/command_rule"
           }
+        },
+        "allow": {
+          "type": "array",
+          "description": "Extra executable names repository commands may invoke, additive to the built-in default allowlist. Optional and non-breaking.",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

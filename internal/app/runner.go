@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,7 +45,10 @@ type Spec struct {
 // Result captures everything the orchestrator needs to decide what
 // happened, independent of whether the tool "succeeded" in a domain sense.
 type Result struct {
-	Name     string
+	Name string
+	// Command is the exact executable and argv that ran, so a diagnostic can
+	// name the failed command rather than just its exit status.
+	Command  string
 	Stdout   []byte
 	Stderr   []byte
 	ExitCode int // -1 when the process never produced an exit code
@@ -77,6 +81,39 @@ func (r Result) State() string {
 		return "crashed"
 	}
 	return "ok"
+}
+
+// Diagnostic returns a human-readable explanation of a non-passing run that
+// names the failed tool and the exact command, and states the safe next
+// action. It returns "" for a successful run, so callers can attach it to
+// stderr/evidence without turning a clean run into a warning.
+//
+// "error: exit status 1" is not an actionable message. A reader has to know
+// which command failed and what to do about it, and the orchestrator is the
+// only layer that has both.
+func (r Result) Diagnostic() string {
+	name := r.Name
+	if name == "" {
+		name = "tool"
+	}
+	cmd := r.Command
+	if cmd == "" {
+		cmd = name
+	}
+
+	switch {
+	case errors.Is(r.Err, ErrNotInstalled):
+		return fmt.Sprintf("%s: command %q is not installed on PATH; install it or remove it from required checks, then rerun", name, cmd)
+	case r.TimedOut:
+		return fmt.Sprintf("%s: command %q exceeded its time limit; raise the timeout or narrow the scan scope, then rerun", name, cmd)
+	case r.Killed:
+		return fmt.Sprintf("%s: command %q was cancelled before it completed; rerun when the run has time to finish", name, cmd)
+	case r.Err != nil:
+		return fmt.Sprintf("%s: command %q failed to run: %v; verify the tool installation and arguments, then rerun", name, cmd, r.Err)
+	case r.ExitCode != 0 && r.ExitCode != 1:
+		return fmt.Sprintf("%s: command %q exited with code %d; inspect the captured output, fix the invocation, then rerun", name, cmd, r.ExitCode)
+	}
+	return ""
 }
 
 // ErrNotInstalled is returned (wrapped) when the target executable cannot
@@ -118,7 +155,11 @@ type processTree interface {
 // scanner which has spawned its own children cannot survive as an orphan.
 func Run(ctx context.Context, s Spec) Result {
 	start := time.Now()
-	res := Result{Name: s.Name, ExitCode: -1}
+	res := Result{
+		Name:     s.Name,
+		Command:  strings.Join(append([]string{s.Command}, s.Args...), " "),
+		ExitCode: -1,
+	}
 
 	if _, err := exec.LookPath(s.Command); err != nil {
 		res.Err = fmt.Errorf("%s: %w: %v", s.Name, ErrNotInstalled, err)
@@ -232,6 +273,7 @@ func RunParallel(ctx context.Context, specs []Spec, maxConcurrency int) []Result
 				if rec := recover(); rec != nil {
 					results[idx] = Result{
 						Name:     spec.Name,
+						Command:  strings.Join(append([]string{spec.Command}, spec.Args...), " "),
 						ExitCode: -1,
 						Err:      fmt.Errorf("panic in runner goroutine: %v", rec),
 					}
@@ -244,6 +286,7 @@ func RunParallel(ctx context.Context, specs []Spec, maxConcurrency int) []Result
 			case <-ctx.Done():
 				results[idx] = Result{
 					Name:     spec.Name,
+					Command:  strings.Join(append([]string{spec.Command}, spec.Args...), " "),
 					ExitCode: -1,
 					Killed:   true,
 					Err:      ctx.Err(),

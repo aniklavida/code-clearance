@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "adapters": {
+    "required": ["gitleaks"],
+    "optional": ["osv-scanner"]
+  },
+  "paths": {
+    "include": ["**/*"],
+    "exclude": [".git/**"]
+  },
+  "scopes": {
+    "quick": {
+      "adapters": ["gitleaks", "osv-scanner"],
+      "commands": ["go test ./..."],
+      "allow_dirty": true
+    },
+    "full": {
+      "adapters": ["gitleaks", "osv-scanner"],
+      "commands": ["go test ./..."],
+      "allow_dirty": false
+    },
+    "release": {
+      "adapters": ["gitleaks", "osv-scanner"],
+      "commands": ["go test ./..."],
+      "allow_dirty": false
+    }
+  },
+  "policy": {
+    "blocking_severities": ["critical", "high"],
+    "allow_dirty": false,
+    "accepted_risks": []
+  },
+  "commands": {
+    "required": [
+      {
+        "name": "test",
+        "run": "go test ./...",
+        "timeout_seconds": 120
+      }
+    ],
+    "optional": []
+  },
+  "limits": {
+    "timeout_seconds": 300,
+    "max_concurrency": 4
+  },
+  "outcomes": {
+    "minimum_evidence": {
+      "cleared": {
+        "required_adapters_must_pass": true,
+        "zero_blocking_findings": true,
+        "clean_tree_required": true
+      },
+      "cleared_with_residual_risk": {
+        "accepted_risks_unexpired": true
+      },
+      "blocked": {
+        "blocking_finding_present": true
+      },
+      "incomplete": {
+        "missing_required_adapter": true,
+        "crashed_or_timed_out": true
+      }
+    }
+  }
+}

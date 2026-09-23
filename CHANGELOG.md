@@ -30,6 +30,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Loud parser failure and tool version validation marking unparsed or unsupported checks as unavailable.
 - Deterministic policy evaluation engine enforcing invariant outcomes.
 - Bi-directional SARIF 2.1.0 export and documentation of assurance fields without SARIF counterparts (`docs/SARIF_MAPPING.md`).
+- Hardening test suite covering timeout, crash, cancellation and dirty-tree boundaries end to end through the engine.
+- Adapter-failure isolation test proving one panicking scanner cannot abort or corrupt sibling adapters' results.
+- Hostile `clearance.yaml` fixture and permanent test proving shell wrappers, path traversal, newline injection, command substitution and unlisted binaries all fail safely.
+- A required-check audit test enumerating every run status and asserting none converts an unavailable required check into a pass.
+- Actionable failure diagnostics that name the failed command/tool and state the safe next action.
+- Configuration schema migration: `policy.MigrateConfig` normalises version aliases and legacy scope shapes, and rejects unknown versions with an actionable error.
+
+### Security
+
+- Repository-defined commands are now checked against a command allowlist (extendable per review via the optional `commands.allow` field); a refused command is recorded as a non-pass rather than skipped.
+- Secret redaction is proven across three surfaces at once: the normalized finding derived from scanner output, the rendered report, and the MCP agent payload, while local raw evidence remains preserved.
 
 ### Changed
 
