@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/aniklavida/code-clearance/internal/evidence"
 )
@@ -314,4 +315,18 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("parse migrated clearance configuration: %w", err)
 	}
 	return c, nil
+}
+
+// FindConfigFile returns the path to clearance.yaml if present in targetDir,
+// or clearance.json if present, or an empty string if neither exists.
+func FindConfigFile(targetDir string) string {
+	yamlPath := filepath.Join(targetDir, "clearance.yaml")
+	if _, err := os.Stat(yamlPath); err == nil {
+		return yamlPath
+	}
+	jsonPath := filepath.Join(targetDir, "clearance.json")
+	if _, err := os.Stat(jsonPath); err == nil {
+		return jsonPath
+	}
+	return ""
 }

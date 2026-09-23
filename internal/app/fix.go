@@ -128,9 +128,11 @@ func GetFixContext(ctx context.Context, args FixContextArgs) (*FixContext, error
 
 	// 3. Resolve human-required class constraints
 	cfg := policy.DefaultConfig()
-	cfgPath := filepath.Join(absDir, "clearance.json")
-	if loadedCfg, err := policy.Load(cfgPath); err == nil {
-		cfg = loadedCfg
+	cfgPath := policy.FindConfigFile(absDir)
+	if cfgPath != "" {
+		if loadedCfg, err := policy.Load(cfgPath); err == nil {
+			cfg = loadedCfg
+		}
 	}
 	prof := cfg.ActiveProfile(report.Coverage.Scope)
 

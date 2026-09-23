@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Onboarding flow with `code-clearance init` detecting repository stack and available scanner tools to propose a versioned `clearance.yaml`, writing only upon explicit approval.
+- Diagnostics and environment verification via `code-clearance doctor` confirming engine health, adapter minimal invocations, repository command execution, and MCP registration.
+- Actionable failure remedies in doctor naming missing tools, broken commands, allowlist extensions, and safe next actions.
+- Guided scanner installation in doctor displaying platform-specific install commands and requiring explicit approval before modifying the machine.
+- MCP host registration management via `code-clearance mcp` (register, verify, unregister) verifying server connectivity via real protocol handshake over stdio.
+- Documented update guidance and clean uninstall path for local files, registrations, and binaries.
 - Unattended agent loop integration covering the complete scan -> challenge -> fix -> verify -> report workflow over MCP with lineage preservation.
 - Rigorous determinism verification asserting identical recorded evidence and configuration produce identical verdicts across repeated evaluations.
 - Requirement assertion ensuring missing or removed required adapters produce Incomplete and name the missing check by name in the report.
