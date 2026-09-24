@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aniklavida/code-clearance/internal/policy"
-	"github.com/aniklavida/code-clearance/internal/schema"
 	"github.com/aniklavida/code-clearance/internal/store"
 	"os/signal"
 	"syscall"
@@ -22,6 +20,11 @@ import (
 	"github.com/aniklavida/code-clearance/internal/mcpserver"
 	"github.com/aniklavida/code-clearance/internal/report"
 )
+
+// scanEngine lets tests inject a deterministic engine into the CLI scan path.
+// When nil (production) the shared default engine is used. It exists so the
+// CLI and the GitHub Action can be compared on exactly the same evidence.
+var scanEngine *app.Engine
 
 func main() {
 	if len(os.Args) < 2 {
@@ -105,20 +108,14 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	opts := app.ScanOptions{Scope: *scopeFlag}
-	cfgPath := policy.FindConfigFile(targetDir)
-	if cfgPath != "" {
-		if data, err := os.ReadFile(cfgPath); err == nil {
-			if valErr := schema.ValidateClearance(data); valErr != nil {
-				fmt.Fprintf(stderr, "invalid %s: %v\n", filepath.Base(cfgPath), valErr)
-				return 1
-			}
-			if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
-				opts.Config = &cfg
-			}
-		}
+	cfg, cfgErr := app.LoadTargetConfig(targetDir)
+	if cfgErr != nil {
+		fmt.Fprintf(stderr, "%v\n", cfgErr)
+		return 1
 	}
+	opts.Config = cfg
 
-	report, err := app.ScanWithOptions(ctx, targetDir, opts)
+	report, err := app.ScanWithEngine(ctx, scanEngine, targetDir, opts)
 	if err != nil {
 		fmt.Fprintf(stderr, "scan error: %v\n", err)
 		return 1
@@ -345,20 +342,14 @@ func runClearanceRun(ctx context.Context, args []string, stdout, stderr io.Write
 	}
 
 	opts := app.ScanOptions{Scope: *profile}
-	cfgPath := policy.FindConfigFile(targetDir)
-	if cfgPath != "" {
-		if data, err := os.ReadFile(cfgPath); err == nil {
-			if valErr := schema.ValidateClearance(data); valErr != nil {
-				fmt.Fprintf(stderr, "invalid %s: %v\n", filepath.Base(cfgPath), valErr)
-				return 1
-			}
-			if cfg, cfgErr := policy.Load(cfgPath); cfgErr == nil {
-				opts.Config = &cfg
-			}
-		}
+	cfg, cfgErr := app.LoadTargetConfig(targetDir)
+	if cfgErr != nil {
+		fmt.Fprintf(stderr, "%v\n", cfgErr)
+		return 1
 	}
+	opts.Config = cfg
 
-	report, err := app.ScanWithOptions(ctx, targetDir, opts)
+	report, err := app.ScanWithEngine(ctx, scanEngine, targetDir, opts)
 	if err != nil {
 		fmt.Fprintf(stderr, "scan error: %v\n", err)
 		return 1

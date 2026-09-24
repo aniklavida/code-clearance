@@ -29,6 +29,7 @@ Code Clearance will not promise zero bugs. A result must disclose its scope, too
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
 - [Public demo](docs/DEMO.md)
 - [v1.0 release notes (draft)](docs/RELEASE_NOTES_v1.0.md)
+- [GitHub Action and pull-request annotations](docs/GITHUB_ACTION.md)
 - [Running in a container](docs/DOCKER.md)
 
 ## Current status
@@ -43,6 +44,20 @@ What runs today: a bounded process runner with cancellation and captured exit st
 Go fixture and prints the four beats the product promises, in order: a
 confirmed issue, a rejected false positive, a verified fix and residual risk.
 See [docs/DEMO.md](docs/DEMO.md).
+
+## GitHub Action
+
+The repository ships a Docker-less GitHub Action (`action.yml`, backed by
+`cmd/code-clearance-action`) for pull-request annotations and SARIF. It runs the
+same application core as the CLI and MCP server, annotates only the changed
+lines, and reports `incomplete` — never a pass — when a required scanner is
+unavailable on the runner. An unavailable required scanner makes the step fail.
+
+Parity between the CLI and the Action is proven locally by
+`TestCLIAndAction_ReachIdenticalPolicyOutcomeOnSameRecordedEvidence`; the Action
+has not yet been triggered on a live GitHub Actions runner. See
+[docs/GITHUB_ACTION.md](docs/GITHUB_ACTION.md) for inputs, outputs, a workflow
+example and local verification steps.
 
 ## Installation (planned)
 

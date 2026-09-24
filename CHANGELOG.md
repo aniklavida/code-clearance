@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- GitHub Action (`action.yml`) and a Docker-less `code-clearance-action` entry point that runs the exact same `internal/app` core as the CLI and MCP server, then adds the CI-specific projections: pull-request annotations scoped to changed lines and a SARIF report for code-scanning consumers.
+- A shared `app.ScanWithEngine` and `app.LoadTargetConfig` path so the CLI, MCP server and GitHub Action resolve configuration and reach their verdict through one code path rather than three.
+- CLI/Action parity test `TestCLIAndAction_ReachIdenticalPolicyOutcomeOnSameRecordedEvidence`, which runs both transports against the same recorded evidence and configuration and asserts an identical outcome, reason and finding set.
+- Changed-line annotation, SARIF-export and no-network tests for the Action (`TestAction_AnnotationsScopedToChangedLines_UsingPRDiffFixture`, `TestAction_SARIFExportIsStructurallyValid`, `TestAction_RunOpensNoNetworkConnection`), plus `TestAction_UnavailableRequiredScannerProducesIncompleteNotPass` reusing the existing required-unavailable constraint.
+- `docs/GITHUB_ACTION.md` documenting inputs, outputs, changed-line annotations, SARIF upload and local verification.
 - Onboarding flow with `code-clearance init` detecting repository stack and available scanner tools to propose a versioned `clearance.yaml`, writing only upon explicit approval.
 - Diagnostics and environment verification via `code-clearance doctor` confirming engine health, adapter minimal invocations, repository command execution, and MCP registration.
 - Actionable failure remedies in doctor naming missing tools, broken commands, allowlist extensions, and safe next actions.
