@@ -147,7 +147,8 @@ func ServeStdio(ctx context.Context) error {
 
 type ClearanceRunArgs struct {
 	TargetDir string `json:"target_dir" jsonschema:"absolute path to the directory to scan"`
-	Profile   string `json:"profile,omitempty" jsonschema:"optional profile to run (quick, full, release)"`
+	Profile   string `json:"profile,omitempty" jsonschema:"optional scope to run (quick, full, release)"`
+	Preset    string `json:"preset,omitempty" jsonschema:"optional policy preset (individual, team, release)"`
 }
 
 func ClearanceRun(ctx context.Context, req *mcp.CallToolRequest, args ClearanceRunArgs) (*mcp.CallToolResult, evidence.Report, error) {
@@ -156,7 +157,7 @@ func ClearanceRun(ctx context.Context, req *mcp.CallToolRequest, args ClearanceR
 		scope = "quick"
 	}
 
-	opts := app.ScanOptions{Scope: scope}
+	opts := app.ScanOptions{Scope: scope, Preset: args.Preset}
 
 	cfg, loadErr := app.LoadTargetConfig(args.TargetDir)
 	if loadErr != nil {

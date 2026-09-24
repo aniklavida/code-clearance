@@ -60,12 +60,13 @@ type ScopesConfig struct {
 }
 
 type AcceptedRiskRule struct {
-	FindingID string `json:"finding_id,omitempty" yaml:"finding_id,omitempty"`
-	RuleID    string `json:"rule_id,omitempty" yaml:"rule_id,omitempty"`
-	Tool      string `json:"tool,omitempty" yaml:"tool,omitempty"`
-	Reason    string `json:"reason" yaml:"reason"`
-	ExpiresAt string `json:"expires_at" yaml:"expires_at"`
-	Owner     string `json:"owner,omitempty" yaml:"owner,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty" yaml:"fingerprint,omitempty"`
+	FindingID   string `json:"finding_id,omitempty" yaml:"finding_id,omitempty"`
+	RuleID      string `json:"rule_id,omitempty" yaml:"rule_id,omitempty"`
+	Tool        string `json:"tool,omitempty" yaml:"tool,omitempty"`
+	Reason      string `json:"reason" yaml:"reason"`
+	ExpiresAt   string `json:"expires_at" yaml:"expires_at"`
+	Owner       string `json:"owner,omitempty" yaml:"owner,omitempty"`
 }
 
 type HumanRequiredClass struct {

@@ -222,6 +222,7 @@ func TestAcceptedRisk_MatchesAfterUnrelatedEdit(t *testing.T) {
 		{
 			FindingID: fBefore.ID,
 			Reason:    "Test key for mock environment",
+			Owner:     "security-team",
 			ExpiresAt: "9999-12-31T23:59:59Z",
 		},
 	}

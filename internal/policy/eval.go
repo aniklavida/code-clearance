@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/aniklavida/code-clearance/internal/evidence"
 )
@@ -26,6 +27,8 @@ type EvaluationVerdict struct {
 //     nor any wall-clock time lookup influences the verdict.
 func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	prof := cfg.ActiveProfile(rep.Coverage.Scope)
+
+	releaseMode := rep.Coverage.Scope == "release"
 
 	verdict := EvaluationVerdict{
 		BlockingFindings: []string{},
@@ -164,6 +167,10 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 		sort.Strings(unavailableRequired)
 		verdict.Outcome = evidence.OutcomeIncomplete
 		verdict.Reason = fmt.Sprintf("required adapter(s) unavailable: %s", strings.Join(unavailableRequired, ", "))
+		if releaseMode {
+			verdict.Outcome = evidence.OutcomeBlocked
+			verdict.Reason = "release mode blocked: required evidence is incomplete: " + verdict.Reason
+		}
 		sortUncovered(&verdict.Uncovered)
 		return verdict
 	}
@@ -172,6 +179,10 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 		sort.Strings(missingRequired)
 		verdict.Outcome = evidence.OutcomeIncomplete
 		verdict.Reason = fmt.Sprintf("required adapter(s) did not run: %s", strings.Join(missingRequired, ", "))
+		if releaseMode {
+			verdict.Outcome = evidence.OutcomeBlocked
+			verdict.Reason = "release mode blocked: required evidence is incomplete: " + verdict.Reason
+		}
 		sortUncovered(&verdict.Uncovered)
 		return verdict
 	}
@@ -180,6 +191,17 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 		sort.Strings(crashedOrTimedOutRequired)
 		verdict.Outcome = evidence.OutcomeIncomplete
 		verdict.Reason = fmt.Sprintf("required adapter(s) failed execution: %s", strings.Join(crashedOrTimedOutRequired, ", "))
+		if releaseMode {
+			verdict.Outcome = evidence.OutcomeBlocked
+			verdict.Reason = "release mode blocked: required evidence is incomplete: " + verdict.Reason
+		}
+		sortUncovered(&verdict.Uncovered)
+		return verdict
+	}
+
+	if releaseMode && (rep.Provenance == nil || !rep.Provenance.Verified) {
+		verdict.Outcome = evidence.OutcomeBlocked
+		verdict.Reason = "release mode blocked: provenance checks did not verify the target commit and tree"
 		sortUncovered(&verdict.Uncovered)
 		return verdict
 	}
@@ -220,23 +242,30 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 
 	// Index accepted risk rules
 	acceptedByFindingID := make(map[string]AcceptedRiskRule)
+	acceptedByFingerprint := make(map[string]AcceptedRiskRule)
 	acceptedByRuleID := make(map[string]AcceptedRiskRule)
 	for _, ar := range prof.Policy.AcceptedRisks {
 		if ar.FindingID != "" {
 			acceptedByFindingID[ar.FindingID] = ar
+		}
+		if ar.Fingerprint != "" {
+			acceptedByFingerprint[ar.Fingerprint] = ar
 		}
 		if ar.RuleID != "" {
 			acceptedByRuleID[ar.RuleID] = ar
 		}
 	}
 
-	// Deterministic reference time for expiry: use completed_at if present, else started_at, else constant
-	refTime := rep.Timestamps.CompletedAt
-	if refTime == "" {
-		refTime = rep.Timestamps.StartedAt
+	refTimeValue := rep.Timestamps.CompletedAt
+	if refTimeValue == "" {
+		refTimeValue = rep.Timestamps.StartedAt
 	}
-	if refTime == "" {
-		refTime = "2026-09-17T00:00:00Z"
+	if refTimeValue == "" {
+		refTimeValue = "2026-09-17T00:00:00Z"
+	}
+	refTime, parseErr := time.Parse(time.RFC3339, refTimeValue)
+	if parseErr != nil {
+		refTime = time.Unix(0, 0).UTC()
 	}
 
 	blockingSeverityMap := make(map[evidence.Severity]bool)
@@ -245,6 +274,9 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 	}
 
 	for _, f := range allFindings {
+		if f.SuppressedByBaseline {
+			continue
+		}
 		isHumanReq := false
 		for _, req := range prof.Policy.HumanRequiredClasses {
 			match := true
@@ -274,7 +306,9 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 
 		// Check if finding is accepted
 		var acceptedRule *AcceptedRiskRule
-		if ar, ok := acceptedByFindingID[f.ID]; ok {
+		if ar, ok := acceptedByFingerprint[f.Fingerprint]; ok {
+			acceptedRule = &ar
+		} else if ar, ok := acceptedByFindingID[f.ID]; ok {
 			acceptedRule = &ar
 		} else if ar, ok := acceptedByRuleID[f.RuleID]; ok {
 			acceptedRule = &ar
@@ -296,32 +330,27 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 			}
 		}
 
-		if acceptedRule == nil && f.ChallengeStatus == evidence.ChallengeAcceptedRisk {
-			if !ignoreOverride {
-				// Finding was flagged as accepted risk without a specific config entry
-				rule := AcceptedRiskRule{
-					FindingID: f.ID,
-					RuleID:    f.RuleID,
-					Tool:      f.Tool,
-					Reason:    "accepted during review challenge",
-					ExpiresAt: "9999-12-31T23:59:59Z",
-				}
-				if f.Reviewer.Identity != "" {
-					rule.Owner = string(f.Reviewer.Type) + ":" + f.Reviewer.Identity
-				}
-				acceptedRule = &rule
+		if acceptedRule == nil && f.ChallengeStatus == evidence.ChallengeAcceptedRisk && f.RiskAcceptance != nil && !ignoreOverride {
+			rule := AcceptedRiskRule{
+				Fingerprint: f.Fingerprint,
+				FindingID:   f.ID,
+				RuleID:      f.RuleID,
+				Tool:        f.Tool,
+				Reason:      f.RiskAcceptance.Reason,
+				Owner:       f.RiskAcceptance.Owner,
+				ExpiresAt:   f.RiskAcceptance.ExpiresAt,
 			}
+			acceptedRule = &rule
 		}
 
 		if acceptedRule != nil {
-			// Check expiration deterministically via string comparison for ISO 8601 timestamps
-			if acceptedRule.ExpiresAt != "" && acceptedRule.ExpiresAt < refTime {
-				// Expired risk acceptance is treated as unaccepted
+			expiresAt, parseErr := time.Parse(time.RFC3339, acceptedRule.ExpiresAt)
+			validAcceptance := parseErr == nil && acceptedRule.Owner != "" && expiresAt.After(refTime)
+			if !validAcceptance {
 				if blockingSeverityMap[f.NormalizedSeverity] {
 					verdict.BlockingFindings = append(verdict.BlockingFindings, f.ID)
 				}
 			} else {
-				// Valid non-expired risk acceptance
 				verdict.ResidualRisk = append(verdict.ResidualRisk, evidence.ResidualRiskItem{
 					FindingID:  f.ID,
 					RuleID:     f.RuleID,

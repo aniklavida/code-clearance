@@ -56,6 +56,8 @@ func main() {
 		os.Exit(runFixContext(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "findings":
 		os.Exit(runFindings(ctx, os.Args[2:], os.Stdout, os.Stderr))
+	case "baseline":
+		os.Exit(runBaseline(ctx, os.Args[2:], os.Stdout, os.Stderr))
 	case "serve":
 		os.Exit(runServe(ctx, os.Args[2:], os.Stderr))
 	case "version", "--version", "-v":
@@ -88,6 +90,7 @@ Commands:
   verify          Rerun minimum affected checks to verify remediation
   fix-context     Get evidence and constraints to prepare a fix
   findings        Get current findings and review states
+  baseline        Create a fingerprint baseline from the latest report
   serve           Serve clearance MCP tools over stdio
   version         Print the version, and whether this build is signed
 `)
@@ -97,6 +100,7 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "output report as JSON")
+	htmlOut := fs.String("html-out", "", "write an offline HTML report to this path")
 	scopeFlag := fs.String("scope", "quick", "scan scope: quick (changed files), full (all files), release")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -130,6 +134,12 @@ func runScan(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, string(data))
 	} else {
 		printHumanReport(report, stdout)
+	}
+	if *htmlOut != "" {
+		if err := writeHTMLReport(report, *htmlOut); err != nil {
+			fmt.Fprintf(stderr, "HTML report error: %v\n", err)
+			return 1
+		}
 	}
 
 	// Exit non-zero if any findings were detected or checks failed
@@ -331,7 +341,9 @@ func runClearanceRun(ctx context.Context, args []string, stdout, stderr io.Write
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "output report as JSON")
-	profile := fs.String("profile", "quick", "scan profile: quick (default), full, release")
+	htmlOut := fs.String("html-out", "", "write an offline HTML report to this path")
+	profile := fs.String("profile", "quick", "scan scope: quick (default), full, release")
+	preset := fs.String("preset", "", "policy preset: individual, team, or release")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -341,7 +353,7 @@ func runClearanceRun(ctx context.Context, args []string, stdout, stderr io.Write
 		targetDir = fs.Arg(0)
 	}
 
-	opts := app.ScanOptions{Scope: *profile}
+	opts := app.ScanOptions{Scope: *profile, Preset: *preset}
 	cfg, cfgErr := app.LoadTargetConfig(targetDir)
 	if cfgErr != nil {
 		fmt.Fprintf(stderr, "%v\n", cfgErr)
@@ -375,6 +387,12 @@ func runClearanceRun(ctx context.Context, args []string, stdout, stderr io.Write
 	} else {
 		printHumanReport(report, stdout)
 	}
+	if *htmlOut != "" {
+		if err := writeHTMLReport(report, *htmlOut); err != nil {
+			fmt.Fprintf(stderr, "HTML report error: %v\n", err)
+			return 1
+		}
+	}
 
 	for _, run := range report.Runs {
 		if run.Status == evidence.StatusFindings || run.Status == evidence.StatusCrashed || run.Status == evidence.StatusTimedOut {
@@ -387,10 +405,24 @@ func runClearanceRun(ctx context.Context, args []string, stdout, stderr io.Write
 	return 0
 }
 
+func writeHTMLReport(rep evidence.Report, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return report.WriteHTML(rep, file)
+}
+
 func runClearanceReport(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "output report as JSON")
+	htmlOut := fs.Bool("html", false, "write an offline HTML report to stdout")
+	htmlFile := fs.String("html-out", "", "write an offline HTML report to this path")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -442,6 +474,20 @@ func runClearanceReport(ctx context.Context, args []string, stdout, stderr io.Wr
 	if err := json.Unmarshal(data, &rep); err != nil {
 		fmt.Fprintf(stderr, "could not parse report JSON: %v\n", err)
 		return 1
+	}
+	if *htmlOut {
+		if err := report.WriteHTML(rep, stdout); err != nil {
+			fmt.Fprintf(stderr, "HTML report error: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	if *htmlFile != "" {
+		if err := writeHTMLReport(rep, *htmlFile); err != nil {
+			fmt.Fprintf(stderr, "HTML report error: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 
 	printHumanReport(rep, stdout)

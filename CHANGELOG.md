@@ -51,6 +51,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Deterministic finding fingerprints, single-adapter deduplication and cross-tool correlation that preserve every constituent source record.
 - Real process adapters for Gitleaks, OSV-Scanner, Semgrep and Trivy, each recording its tool version, exact command, exit semantics and raw output.
 - `clearance_run` and `clearance_report` MCP tools with per-profile policy evaluation, backed by the `run` and `report` CLI subcommands through one core.
+- Fingerprint baselines with `code-clearance baseline create`; suppressed findings remain disclosed in every report with baseline counts and source evidence.
+- Expiring risk acceptance requiring reason, owner and RFC3339 expiry; expired or incomplete acceptance never renews and blocks on the next run.
+- Named `individual`, `team` and `release` policy presets, with release mode enforcing full scope, strict policy and Git provenance.
+- Offline local HTML reports via `code-clearance run --html-out` and `code-clearance report --html`, with inline styling and no network resources.
 - Git and dirty-tree scoping that binds every report to repository identity, commit SHA and a working-tree fingerprint.
 - CI that installs the real scanners and fails the build when a scanner-backed test silently skips.
 - A tag-triggered release workflow (`.github/workflows/release.yml`) that cross-compiles macOS (amd64/arm64) and Linux (amd64/arm64), publishes `checksums.txt` (sha256), and records GitHub build provenance with `actions/attest-build-provenance`.
