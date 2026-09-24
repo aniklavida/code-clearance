@@ -13,6 +13,7 @@ import (
 	"github.com/aniklavida/code-clearance/internal/correlate"
 	"github.com/aniklavida/code-clearance/internal/evidence"
 	"github.com/aniklavida/code-clearance/internal/policy"
+	"github.com/aniklavida/code-clearance/internal/schema"
 	"github.com/aniklavida/code-clearance/internal/store"
 )
 
@@ -437,6 +438,41 @@ func Scan(ctx context.Context, targetDir string) (evidence.Report, error) {
 // ScanWithOptions executes clearance checks on targetDir using the default engine with options.
 func ScanWithOptions(ctx context.Context, targetDir string, opts ScanOptions) (evidence.Report, error) {
 	return defaultEngine.ScanWithOptions(ctx, targetDir, opts)
+}
+
+// ScanWithEngine executes clearance checks on targetDir using the supplied
+// engine, or the shared default engine when engine is nil. Every transport
+// (CLI, MCP, GitHub Action) funnels through this one function so a caller can
+// inject a fixed engine for tests without reimplementing scan or evaluate
+// logic in a second place.
+func ScanWithEngine(ctx context.Context, engine *Engine, targetDir string, opts ScanOptions) (evidence.Report, error) {
+	if engine == nil {
+		return defaultEngine.ScanWithOptions(ctx, targetDir, opts)
+	}
+	return engine.ScanWithOptions(ctx, targetDir, opts)
+}
+
+// LoadTargetConfig resolves and validates the clearance configuration for
+// targetDir, returning nil when the target has no configuration file. It is the
+// single configuration-resolution path shared by every transport so the CLI,
+// MCP and GitHub Action never disagree about which policy applied.
+func LoadTargetConfig(targetDir string) (*policy.Config, error) {
+	cfgPath := policy.FindConfigFile(targetDir)
+	if cfgPath == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", filepath.Base(cfgPath), err)
+	}
+	if valErr := schema.ValidateClearance(data); valErr != nil {
+		return nil, fmt.Errorf("invalid %s: %w", filepath.Base(cfgPath), valErr)
+	}
+	cfg, err := policy.Load(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("load %s: %w", filepath.Base(cfgPath), err)
+	}
+	return &cfg, nil
 }
 
 // DefaultEngine returns the shared default engine.

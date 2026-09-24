@@ -21,9 +21,11 @@ that depend on that.
   `TestAcceptedRisk_MatchesAfterUnrelatedEdit`, `TestConstraint1_...`.
 
 - [ ] Every item in `docs/SPEC.md` release acceptance passes.
-  Missing: the GitHub Action and cross-platform clean-install acceptance items
-  are not implemented or verified; see the specific boxes below. Not a
-  statement about the implemented core, which is covered elsewhere.
+  Missing: the GitHub Action is now implemented and its CLI/Action parity is
+  locally proven, but it has never been run on a live GitHub Actions runner,
+  and the cross-platform clean-install acceptance items remain unverified; see
+  the specific boxes below. Not a statement about the implemented core, which
+  is covered elsewhere.
 
 ## Verification
 
@@ -39,11 +41,17 @@ that depend on that.
   performed. `scripts/install.sh` and the release workflow are prepared but
   unexercised.
 
-- [ ] CLI, MCP and GitHub Action policy parity is verified.
-  Missing: CLI/MCP parity is covered by
-  `TestEntryPoints_ReachIdenticalResultsThroughCore`, but the GitHub Action
-  does not exist in this repository yet, so the three-way parity cannot be
-  verified.
+- [x] CLI, MCP and GitHub Action policy parity is verified.
+  Evidence: CLI/MCP parity is covered by
+  `TestEntryPoints_ReachIdenticalResultsThroughCore`; CLI/Action parity is
+  covered by
+  `TestCLIAndAction_ReachIdenticalPolicyOutcomeOnSameRecordedEvidence`, which
+  runs both transports against the same recorded evidence and configuration and
+  asserts identical outcome, reason and finding set. The GitHub Action exists as
+  `action.yml` backed by `cmd/code-clearance-action`, calling the same
+  `internal/app` core. This parity is proven with local tests only: the Action
+  has not been triggered on a live GitHub Actions runner in this change. Steps
+  to verify live later are in `docs/GITHUB_ACTION.md`.
 
 - [x] Code Clearance successfully evaluates its own repository.
   Evidence: `code-clearance scan --scope full --json .` was run on a clean

@@ -1,0 +1,122 @@
+name: "Code Clearance"
+description: >-
+  Run Code Clearance on the checkout it is handed and annotate the changed
+  lines. A short, honest CI transport over the same application core the
+  code-clearance CLI and MCP server use: identical evidence and policy produce
+  the identical verdict everywhere.
+author: "Code Clearance contributors"
+
+branding:
+  icon: "shield"
+  color: "green"
+
+inputs:
+  target:
+    description: "Path to the checkout to analyse."
+    required: false
+    default: "."
+  scope:
+    description: "Scan scope: quick, full or release."
+    required: false
+    default: "quick"
+  config:
+    description: "Explicit clearance config path. Default: discover clearance.yaml/clearance.json in the target."
+    required: false
+    default: ""
+  diff:
+    description: "Path to a unified diff file to scope annotations to (e.g. `gh pr diff` output)."
+    required: false
+    default: ""
+  base-ref:
+    description: "Git base ref/sha to diff against when no diff file is given."
+    required: false
+    default: ""
+  head-ref:
+    description: "Git head ref/sha used with base-ref."
+    required: false
+    default: "HEAD"
+  changed-only:
+    description: "Annotate only findings on changed lines when a diff is available."
+    required: false
+    default: "true"
+  sarif-file:
+    description: "Path to write the SARIF report (for example for github/codeql-action/upload-sarif)."
+    required: false
+    default: "code-clearance.sarif"
+  json-file:
+    description: "Optional path to write the JSON clearance report."
+    required: false
+    default: ""
+  fail-on:
+    description: "When to fail the step: blocked (blocked and incomplete), any (also residual risk), or never."
+    required: false
+    default: "blocked"
+  binary:
+    description: "Path to a prebuilt code-clearance-action binary. When empty the action builds one from this repository with Go."
+    required: false
+    default: ""
+
+outputs:
+  outcome:
+    description: "The policy outcome: cleared, cleared-with-residual-risk, blocked or incomplete."
+    value: ${{ steps.run.outputs.outcome }}
+  reason:
+    description: "Why the outcome is what it is, naming missing required checks or blocking findings."
+    value: ${{ steps.run.outputs.reason }}
+  sarif-file:
+    description: "The SARIF file that was written."
+    value: ${{ steps.run.outputs.sarif-file }}
+  json-file:
+    description: "The JSON report file that was written, if any."
+    value: ${{ steps.run.outputs.json-file }}
+  annotations:
+    description: "The number of pull-request annotations emitted."
+    value: ${{ steps.run.outputs.annotations }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build the Code Clearance action binary
+      if: ${{ inputs.binary == '' }}
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        go build -trimpath -o "${{ runner.temp }}/code-clearance-action" ./cmd/code-clearance-action
+
+    # The checkout is owed to the calling workflow; this action reads only it
+    # and writes only the report paths it is given. No Docker, no upload.
+    - name: Run Code Clearance
+      id: run
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        BIN="${{ inputs.binary }}"
+        if [ -z "$BIN" ]; then
+          BIN="${{ runner.temp }}/code-clearance-action"
+        fi
+
+        args=(
+          --target "${{ inputs.target }}"
+          --scope "${{ inputs.scope }}"
+          --changed-only="${{ inputs.changed-only }}"
+          --head-ref "${{ inputs.head-ref }}"
+          --sarif-out "${{ inputs.sarif-file }}"
+          --fail-on "${{ inputs.fail-on }}"
+        )
+
+        if [ -n "${{ inputs.config }}" ]; then
+          args+=(--config "${{ inputs.config }}")
+        fi
+        if [ -n "${{ inputs.diff }}" ]; then
+          args+=(--diff "${{ inputs.diff }}")
+        fi
+        if [ -n "${{ inputs.base-ref }}" ]; then
+          args+=(--base-ref "${{ inputs.base-ref }}")
+        fi
+        if [ -n "${{ inputs.json-file }}" ]; then
+          args+=(--json-out "${{ inputs.json-file }}")
+        fi
+
+        "$BIN" "${args[@]}"

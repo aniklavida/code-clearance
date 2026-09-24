@@ -1,0 +1,246 @@
+{
+  "schema_version": "v1",
+  "target": {
+    "repository": "https://github.com/example/recorded-evidence",
+    "commit": "1111111111111111111111111111111111111111",
+    "dirty": false,
+    "fingerprint": "clean"
+  },
+  "outcome": "blocked",
+  "reason": "1 blocking finding(s) detected: F-CHANGED-SECRET",
+  "runs": [
+    {
+      "tool": "recorded-scanner",
+      "tool_version": "v1.2.3",
+      "command": "recorded-scanner scan --full",
+      "exit_code": 1,
+      "duration": "12ms",
+      "status": "ok-findings",
+      "findings": [
+        {
+          "id": "F-CHANGED-SECRET",
+          "fingerprint": "F-CHANGED-SECRET",
+          "tool": "recorded-scanner",
+          "tool_version": "v1.2.3",
+          "rule_id": "generic-api-key",
+          "command": "recorded-scanner scan --full",
+          "native_severity": "HIGH",
+          "normalized_severity": "high",
+          "locations": [
+            {
+              "uri": "src/app.go",
+              "start_line": 12,
+              "end_line": 12
+            }
+          ],
+          "scope": {
+            "commit": "1111111111111111111111111111111111111111",
+            "path": "src/app.go"
+          },
+          "snippet_hash": "",
+          "message": "Hardcoded API key detected",
+          "evidence": {
+            "details": "Recorded scanner output: hardcoded credential in src/app.go"
+          },
+          "remediation": {
+            "recommendation": "Move the credential to a secret store"
+          },
+          "confidence": {
+            "level": "high",
+            "rationale": "Reported directly by recorded-scanner for rule generic-api-key"
+          },
+          "challenge_status": "unreviewed",
+          "reviewer": {
+            "type": "tool",
+            "identity": "recorded-scanner"
+          },
+          "related_finding_ids": [],
+          "duplicate_finding_ids": [],
+          "verification_runs": [],
+          "disposition": "open",
+          "timestamps": {
+            "detected_at": "2026-09-17T12:00:00Z"
+          },
+          "raw_artifact": {
+            "uri": "recorded://recorded-scanner/results.json",
+            "format": "json",
+            "index": 0
+          },
+          "raw_index": 0
+        },
+        {
+          "id": "F-UNCHANGED-SA",
+          "fingerprint": "F-UNCHANGED-SA",
+          "tool": "recorded-scanner",
+          "tool_version": "v1.2.3",
+          "rule_id": "sql-injection",
+          "command": "recorded-scanner scan --full",
+          "native_severity": "MEDIUM",
+          "normalized_severity": "medium",
+          "locations": [
+            {
+              "uri": "src/legacy.go",
+              "start_line": 3,
+              "end_line": 3
+            }
+          ],
+          "scope": {
+            "commit": "1111111111111111111111111111111111111111",
+            "path": "src/legacy.go"
+          },
+          "snippet_hash": "",
+          "message": "Potential SQL injection",
+          "evidence": {
+            "details": "Recorded scanner output: query built from untrusted input in src/legacy.go"
+          },
+          "remediation": {
+            "recommendation": "Use parameterised queries"
+          },
+          "confidence": {
+            "level": "medium",
+            "rationale": "Reported directly by recorded-scanner for rule sql-injection"
+          },
+          "challenge_status": "unreviewed",
+          "reviewer": {
+            "type": "tool",
+            "identity": "recorded-scanner"
+          },
+          "related_finding_ids": [],
+          "duplicate_finding_ids": [],
+          "verification_runs": [],
+          "disposition": "open",
+          "timestamps": {
+            "detected_at": "2026-09-17T12:00:00Z"
+          },
+          "raw_artifact": {
+            "uri": "recorded://recorded-scanner/results.json",
+            "format": "json",
+            "index": 1
+          },
+          "raw_index": 1
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-CHANGED-SECRET",
+      "fingerprint": "F-CHANGED-SECRET",
+      "tool": "recorded-scanner",
+      "tool_version": "v1.2.3",
+      "rule_id": "generic-api-key",
+      "command": "recorded-scanner scan --full",
+      "native_severity": "HIGH",
+      "normalized_severity": "high",
+      "locations": [
+        {
+          "uri": "src/app.go",
+          "start_line": 12,
+          "end_line": 12
+        }
+      ],
+      "scope": {
+        "commit": "1111111111111111111111111111111111111111",
+        "path": "src/app.go"
+      },
+      "snippet_hash": "",
+      "message": "Hardcoded API key detected",
+      "evidence": {
+        "details": "Recorded scanner output: hardcoded credential in src/app.go"
+      },
+      "remediation": {
+        "recommendation": "Move the credential to a secret store"
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "Reported directly by recorded-scanner for rule generic-api-key"
+      },
+      "challenge_status": "unreviewed",
+      "reviewer": {
+        "type": "tool",
+        "identity": "recorded-scanner"
+      },
+      "related_finding_ids": [],
+      "duplicate_finding_ids": [],
+      "verification_runs": [],
+      "disposition": "open",
+      "timestamps": {
+        "detected_at": "2026-09-17T12:00:00Z"
+      },
+      "raw_artifact": {
+        "uri": "recorded://recorded-scanner/results.json",
+        "format": "json",
+        "index": 0
+      },
+      "raw_index": 0
+    },
+    {
+      "id": "F-UNCHANGED-SA",
+      "fingerprint": "F-UNCHANGED-SA",
+      "tool": "recorded-scanner",
+      "tool_version": "v1.2.3",
+      "rule_id": "sql-injection",
+      "command": "recorded-scanner scan --full",
+      "native_severity": "MEDIUM",
+      "normalized_severity": "medium",
+      "locations": [
+        {
+          "uri": "src/legacy.go",
+          "start_line": 3,
+          "end_line": 3
+        }
+      ],
+      "scope": {
+        "commit": "1111111111111111111111111111111111111111",
+        "path": "src/legacy.go"
+      },
+      "snippet_hash": "",
+      "message": "Potential SQL injection",
+      "evidence": {
+        "details": "Recorded scanner output: query built from untrusted input in src/legacy.go"
+      },
+      "remediation": {
+        "recommendation": "Use parameterised queries"
+      },
+      "confidence": {
+        "level": "medium",
+        "rationale": "Reported directly by recorded-scanner for rule sql-injection"
+      },
+      "challenge_status": "unreviewed",
+      "reviewer": {
+        "type": "tool",
+        "identity": "recorded-scanner"
+      },
+      "related_finding_ids": [],
+      "duplicate_finding_ids": [],
+      "verification_runs": [],
+      "disposition": "open",
+      "timestamps": {
+        "detected_at": "2026-09-17T12:00:00Z"
+      },
+      "raw_artifact": {
+        "uri": "recorded://recorded-scanner/results.json",
+        "format": "json",
+        "index": 1
+      },
+      "raw_index": 1
+    }
+  ],
+  "uncovered": {
+    "skipped": [],
+    "crashed": [],
+    "timed_out": [],
+    "unavailable": []
+  },
+  "coverage": {
+    "scope": "full",
+    "files_checked": ["src/app.go", "src/legacy.go"],
+    "adapters_ran": ["recorded-scanner"],
+    "summary": "Recorded evidence fixture"
+  },
+  "residual_risk": [],
+  "timestamps": {
+    "started_at": "2026-09-17T12:00:00Z",
+    "completed_at": "2026-09-17T12:00:01Z"
+  }
+}
