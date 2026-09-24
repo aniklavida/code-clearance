@@ -1,5 +1,7 @@
 # GitHub Action and pull-request annotations
 
+**Status: Experimental.** The Action is implemented and locally tested, but it has not been run on a live hosted GitHub Actions runner.
+
 The GitHub Action is the CI transport for Code Clearance. It is a thin wrapper
 over the same application core the `code-clearance` CLI and the local MCP server
 use: it calls `internal/app` to scan and `internal/policy` to decide the verdict,

@@ -1,5 +1,7 @@
 # Running Code Clearance in a container
 
+**Status: Experimental.** The Dockerfile is present and documented, but it was not built or run in this pass.
+
 `Dockerfile` builds a small image containing the `code-clearance` CLI for
 users who prefer an isolated run. It is an optional execution path, not the
 supported install path for v1.0.

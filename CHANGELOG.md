@@ -1,5 +1,7 @@
 # Changelog
 
+Public capability claims in this file use the repository status vocabulary: **Implemented and tested**, **Experimental**, **Planned for v1.0** or **Unsupported**.
+
 All notable changes to Code Clearance will be documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,7 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- GitHub Action (`action.yml`) and a Docker-less `code-clearance-action` entry point that runs the exact same `internal/app` core as the CLI and MCP server, then adds the CI-specific projections: pull-request annotations scoped to changed lines and a SARIF report for code-scanning consumers.
+- **Implemented and tested:** public README quick start, architecture, configuration, policy, adapter and report-schema documentation with explicit capability status and honest unsupported/planned boundaries.
+- **Implemented and tested:** real JavaScript/TypeScript, Python and Go worked-example reports using checked-in fixtures and captured scanner output.
+- **Implemented and tested:** a complete full-repository dogfood report, including all findings, unavailable scanners, toolchain warnings and residual limitations.
+- **Experimental:** GitHub Action (`action.yml`) and a Docker-less `code-clearance-action` entry point that runs the exact same `internal/app` core as the CLI and MCP server, then adds the CI-specific projections: pull-request annotations scoped to changed lines and a SARIF report for code-scanning consumers. Local parity and behavior tests pass; no live hosted-runner verification is claimed.
 - A shared `app.ScanWithEngine` and `app.LoadTargetConfig` path so the CLI, MCP server and GitHub Action resolve configuration and reach their verdict through one code path rather than three.
 - CLI/Action parity test `TestCLIAndAction_ReachIdenticalPolicyOutcomeOnSameRecordedEvidence`, which runs both transports against the same recorded evidence and configuration and asserts an identical outcome, reason and finding set.
 - Changed-line annotation, SARIF-export and no-network tests for the Action (`TestAction_AnnotationsScopedToChangedLines_UsingPRDiffFixture`, `TestAction_SARIFExportIsStructurallyValid`, `TestAction_RunOpensNoNetworkConnection`), plus `TestAction_UnavailableRequiredScannerProducesIncompleteNotPass` reusing the existing required-unavailable constraint.

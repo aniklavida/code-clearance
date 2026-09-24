@@ -1,215 +1,157 @@
 # Code Clearance
 
-Evidence-based clearance for AI-generated code.
+Code Clearance is a local-first assurance layer for code written by people or coding agents. It records what security and repository checks ran, what they found, which checks did not complete, and whether policy allows the result to clear. “Cleared” never means “zero bugs.”
 
-> **Pre-implementation:** Code Clearance has a version 1.0 product specification, a locked technical foundation (Go, the official MCP Go SDK, and a lightweight core with external scanner adapters) and a repository foundation, but no working release yet. Capabilities below are planned unless explicitly marked implemented.
+## Status vocabulary
 
-Code Clearance will be a local-first assurance engine that coding agents, developers and CI workflows can invoke after meaningful code changes, on Linux, macOS and Windows. It will coordinate trusted scanners and repository checks, normalize and challenge findings, verify fixes by rerunning evidence, and produce a commit-bound report showing what passed, failed, remained unknown or was accepted as risk.
+Public capability claims in this repository use one of four labels:
 
-The intended workflow is:
+- **Implemented and tested** — present in this tree and covered by automated or recorded manual verification.
+- **Experimental** — present, but not verified broadly enough to make a stronger claim.
+- **Planned for v1.0** — specified but not available now.
+- **Unsupported** — not part of the current contract and not treated as available.
+
+## Current state
+
+| Capability | Status | Boundary |
+|---|---|---|
+| Local CLI, `init`, `doctor`, `run`, `report`, reviews, fix context, verification, baselines and offline HTML | **Implemented and tested** | Source builds are supported; no release artifact is published. |
+| Local stdio MCP server and host registration | **Implemented and tested** | The local registration path is tested. Desktop-host configuration formats are **Experimental** and were not exercised in their GUIs. |
+| Git and working-tree report binding; Quick, Full and Release scope planning; deterministic outcomes | **Implemented and tested** | Quick records changed files, but all registered adapters currently receive the repository directory. Affected-file scanner execution is **Experimental**. |
+| Gitleaks and OSV-Scanner adapters | **Implemented and tested** | Real-process tests and a real dogfood run cover both. |
+| Semgrep and Trivy adapters | **Experimental** | Parser fixtures and adapter code exist, but the binaries were unavailable in the recorded run. Trivy currently invokes filesystem mode only. |
+| GitHub Action, changed-line annotations and SARIF export | **Experimental** | Local parity and behavior tests pass; the Action has not run on a live hosted runner. |
+| Tagged, checksummed release binaries and private security reporting | **Planned for v1.0** | Release tooling exists, but no supported release or working private reporting path is published. |
+| Runtime-loaded scanner plugins, artifact/report signing and a Windows release binary | **Unsupported** | These are not current capabilities. |
+
+The source tree is a working pre-release. The public interfaces, schema contracts and the remaining v1.0 gaps are listed below and in the [roadmap](docs/ROADMAP.md).
+
+## Five-minute quick start
+
+**Status: Implemented and tested.** This path was run literally from a clean checkout of the feature branch. It uses a disposable copy of the checked-in Go fixture, so the source checkout stays clean.
+
+Prerequisites:
+
+- Go 1.27.1;
+- Git;
+- Gitleaks 8.x on `PATH`;
+- a POSIX shell for the commands below.
+
+Install Gitleaks using your platform package manager if needed. For example, on macOS with Homebrew: `brew install gitleaks`.
+
+```bash
+git clone https://github.com/aniklavida/code-clearance.git
+cd code-clearance
+go build -o bin/code-clearance ./cmd/code-clearance
+export PATH="$PWD/bin:$PATH"
+export CODE_CLEARANCE_SCHEMAS_DIR="$PWD/schemas"
+
+sample="$(mktemp -d)"
+cp -R testdata/fixtures/go/. "$sample/"
+git -C "$sample" init -q
+git -C "$sample" add .
+git -C "$sample" -c user.name="Quick Start" -c user.email="quick-start@example.invalid" commit -qm "Initial fixture"
+
+code-clearance init --approve "$sample"
+code-clearance doctor "$sample"
+code-clearance run --preset individual "$sample"
+```
+
+The approved initialization writes a `clearance.yaml` file in the sample. Despite the filename, the current format is JSON-compatible YAML 1.2; handwritten YAML syntax is **Unsupported** until a YAML parser is added. `doctor` probes the configured scanners and commands, and the final command prints a terminal report. The verified fixture result is:
 
 ```text
-scan → normalize → correlate → challenge → fix → rescan/test → clearance report
+Outcome: cleared
 ```
 
-Code Clearance will not promise zero bugs. A result must disclose its scope, tool versions, unavailable checks, coverage and residual risk.
+That result means the configured required Gitleaks check completed, the optional checks that were unavailable stayed visible, the Go test command passed, and no configured blocking finding remained. It is not a claim that the fixture has no bugs. If OSV-Scanner is installed, initialization makes it required for this dependency-bearing fixture; if Semgrep or Trivy is absent, those runs remain under `uncovered`.
 
-## Planned interfaces
-
-- One cross-platform `code-clearance` CLI core, for Linux, macOS and Windows
-- Local MCP server for compatible coding-agent hosts
-- GitHub Action and pull-request annotations
-- Terminal, JSON, SARIF-compatible and local HTML reports
-
-## Documents
-
-- [Product specification](docs/SPEC.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Build-to-release roadmap](docs/ROADMAP.md)
-- [Release checklist](docs/RELEASE_CHECKLIST.md)
-- [Public demo](docs/DEMO.md)
-- [v1.0 release notes (draft)](docs/RELEASE_NOTES_v1.0.md)
-- [GitHub Action and pull-request annotations](docs/GITHUB_ACTION.md)
-- [Running in a container](docs/DOCKER.md)
-
-## Current status
-
-The product specification, the contribution foundation, and the first working slice of the engine are here. **No release has been published**, and most capabilities listed above remain planned.
-
-What runs today: a bounded process runner with cancellation and captured exit state, SARIF 2.1.0 normalization, adapters for `gitleaks` and `osv-scanner`, one MCP tool over the official Go SDK, and a single binary exposing the same core through `scan` and `serve`. Scan results are bound to the repository, the commit and a dirty-tree fingerprint.
-
-## Demo
-
-`scripts/demo.sh` runs the real loop against a throwaway copy of the checked-in
-Go fixture and prints the four beats the product promises, in order: a
-confirmed issue, a rejected false positive, a verified fix and residual risk.
-See [docs/DEMO.md](docs/DEMO.md).
-
-## GitHub Action
-
-The repository ships a Docker-less GitHub Action (`action.yml`, backed by
-`cmd/code-clearance-action`) for pull-request annotations and SARIF. It runs the
-same application core as the CLI and MCP server, annotates only the changed
-lines, and reports `incomplete` — never a pass — when a required scanner is
-unavailable on the runner. An unavailable required scanner makes the step fail.
-
-Parity between the CLI and the Action is proven locally by
-`TestCLIAndAction_ReachIdenticalPolicyOutcomeOnSameRecordedEvidence`; the Action
-has not yet been triggered on a live GitHub Actions runner. See
-[docs/GITHUB_ACTION.md](docs/GITHUB_ACTION.md) for inputs, outputs, a workflow
-example and local verification steps.
-
-## Installation (planned)
-
-Nothing is published yet, so neither path below works today. They are recorded so the shape is not a surprise later.
-
-**Tagged release binaries** will be the supported way to install, for Linux, macOS and Windows, with checksums and signing where the platform supports it. A tool whose subject is supply-chain assurance should ship artifacts you can verify.
-
-The release tooling is prepared but not published: `.github/workflows/release.yml` is triggered by a `v*` tag, cross-compiles macOS and Linux binaries, writes `checksums.txt` (sha256), and records GitHub build provenance. `scripts/install.sh` downloads a tagged binary and refuses to install it unless the checksum matches. The tag itself is a human action; see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for what must be true before it is cut.
-
-**`go install github.com/aniklavida/code-clearance/cmd/code-clearance@latest`** will also work, for people who already have a Go toolchain and prefer it. It builds on your machine, so it produces nothing signed — `code-clearance version` says so rather than leaving you to guess.
-
-Package managers such as Homebrew are not planned for the first release. They would not cover Windows, so they solve none of the platform problem.
-
-External scanners are invoked as separate processes and are never vendored: you install `gitleaks` and `osv-scanner` yourself, and Code Clearance reports honestly when a required one is missing.
-
-## Onboarding and quick start
-
-### 1. Initialize configuration (`code-clearance init`)
-
-`code-clearance init` inspects the repository stack (languages, package manifests, lockfiles) and scanner tools available on the host, then proposes a versioned `clearance.yaml` configuration.
-
-To review the proposed configuration without writing it:
+To inspect machine-readable evidence:
 
 ```bash
-code-clearance init
+code-clearance run --preset individual --json "$sample" > clearance-report.json
+code-clearance report --json "$sample"
 ```
 
-Code Clearance never modifies or creates files without an explicit approval step. To approve and write the proposed configuration:
+### Optional: register the local MCP server
+
+**Status: Implemented and tested.** MCP servers are passive: registration does not schedule scans by itself.
 
 ```bash
-code-clearance init --approve
+code-clearance mcp register --host local --config "$sample/.mcp.json" \
+  --command "$PWD/bin/code-clearance"
+code-clearance mcp register --host local --config "$sample/.mcp.json" \
+  --command "$PWD/bin/code-clearance" --approve
+code-clearance mcp verify --config "$sample/.mcp.json"
 ```
 
-### 2. Verify health and environment (`code-clearance doctor`)
+The first registration command previews the file. The approved command writes it, and `verify` performs a real MCP initialization handshake over stdio.
 
-`code-clearance doctor` confirms:
-- the core engine runs and store paths are accessible;
-- each configured scanner adapter actually works (tested via a real minimal version probe, not just checking that the binary exists);
-- each repository-defined command from `clearance.yaml` is permitted by the command allowlist and executes cleanly;
-- registered MCP host connections respond over stdio.
+## What Code Clearance does
 
-```bash
-code-clearance doctor
-```
+**Implemented and tested:**
 
-When a required scanner is missing or broken, `doctor` outputs an actionable diagnostic naming the specific remedy (e.g. `gitleaks not found on PATH; install it or move it to adapters.optional, then rerun`).
+- binds reports to repository, commit and dirty-tree fingerprint;
+- invokes bounded external scanner and repository commands and records process state;
+- preserves raw scanner artifacts locally while redacting normalized report and MCP text;
+- normalizes SARIF and supported native JSON, fingerprints and correlates findings;
+- records review dispositions and expiring accepted risk;
+- verifies a fix only after new evidence from a targeted rerun;
+- renders terminal, JSON, offline HTML and Action SARIF projections;
+- evaluates policy deterministically for identical evidence and configuration;
+- exposes the same application core through CLI, MCP and the Action entry point.
 
-When missing scanners are detected, `doctor` displays the recommended install command for your platform. Machine-modifying actions require explicit approval:
+## What Code Clearance does not do
 
-```bash
-code-clearance doctor --install-missing --approve
-```
+- **Unsupported:** It does not promise zero bugs or universal language, vulnerability or bug coverage.
+- **Unsupported:** It does not automatically install scanners, change configuration, register a host or mutate source without approval.
+- **Unsupported:** It does not upload source by default or provide a hosted dashboard.
+- **Unsupported:** It does not turn a finding into `fixed` merely because a reviewer asserts that it is fixed.
+- **Experimental:** It does not yet pass a Quick plan's changed-file list to scanners; registered scanners receive the repository directory.
+- **Planned for v1.0:** Published cross-platform artifacts, private vulnerability intake and the remaining release acceptance work do not exist yet.
 
-### 3. Register MCP server (`code-clearance mcp`)
-
-> **MCP servers are passive.** Registering the server does not make Code Clearance run itself. Automatic use comes from the host's own instructions, hooks, or CI calling it after meaningful changes. The server does not watch or run on its own.
-
-To preview copy-paste registration snippets:
-
-```bash
-code-clearance mcp register --host local
-```
-
-Supported host targets:
-- `local`: Workspace-level `.mcp.json` (**tested and verified** in this environment via stdio protocol handshake).
-- `claude-desktop`: Claude Desktop configuration (**documented** configuration format; interactive desktop GUI integration is unverified in this headless environment).
-- `cursor`: Cursor IDE configuration (**documented** configuration format; desktop GUI integration is unverified in this headless environment).
-- `windsurf`: Windsurf IDE configuration (**documented** configuration format; desktop GUI integration is unverified in this headless environment).
-
-To approve writing the registration to the target host configuration:
+## Daily use
 
 ```bash
-code-clearance mcp register --host local --approve
-```
+# Preview a policy-aware run without choosing a preset.
+code-clearance run --profile quick
 
-### 4. Verify MCP registration
-
-`code-clearance mcp verify` connects to the registered server over stdio, performs the MCP protocol initialization handshake, and lists registered tools to confirm the server responds:
-
-```bash
-code-clearance mcp verify --config .mcp.json
-```
-
-### 5. Run first scan
-
-```bash
-code-clearance scan --scope quick
-```
-
-### Daily-use profiles, baselines and reports
-
-Use a named policy preset for a local session, a shared team workflow, or a
-release gate:
-
-```bash
-code-clearance run --preset individual --html-out clearance.html
+# Use a stricter preset and write a standalone local HTML report.
 code-clearance run --preset team --html-out clearance.html
-code-clearance run --preset release --html-out release.html
-```
 
-To adopt an existing backlog, run a first report, record the baseline, and then
-rerun the Quick report. Suppressed findings remain in the report and are
-summarised with the baseline source and count:
-
-```bash
+# Adopt a known backlog without hiding it from the report.
+code-clearance run --profile quick
 code-clearance baseline create
-code-clearance run --preset individual --html-out clearance.html
-```
+code-clearance run --profile quick
 
-Accepted risk is explicit and expiring:
-
-```bash
+# Record explicit, expiring risk acceptance.
 code-clearance record-review --fingerprint <fingerprint> \
   --status accepted-risk --reason "temporary exception" \
   --identity alice --expires-at 2030-01-01T00:00:00Z
 ```
 
-HTML reports are standalone local files with inline styles; they do not load
-fonts, scripts, stylesheets, or any other network resource.
+A full explanation of every field and current enforcement boundary is in [Configuration](docs/CONFIGURATION.md) and [Policy](docs/POLICY.md).
 
-A signed report attestation tied to the commit and report digest remains a
-follow-up; this change does not add a signing dependency without an existing
-repository signing mechanism.
+## Documentation
 
+- [Architecture](docs/ARCHITECTURE.md) — implemented system flow, package boundaries and current gaps
+- [Configuration](docs/CONFIGURATION.md) — file format, profiles, commands and schema fields
+- [Policy](docs/POLICY.md) — deterministic outcomes, findings, risk acceptance and presets
+- [Adapter guide](docs/ADAPTER_GUIDE.md) — add a scanner behind the existing core
+- [Report schema](docs/REPORT_SCHEMA.md) — report fields, statuses, artifacts and compatibility
+- [Worked examples](docs/EXAMPLES.md) — real JavaScript/TypeScript, Python and Go runs
+- [Dogfood run](docs/DOGFOOD.md) — complete self-scan result and residual limitations
+- [SARIF mapping](docs/SARIF_MAPPING.md) — evidence fields that SARIF can and cannot express
+- [Product specification](docs/SPEC.md) and [roadmap](docs/ROADMAP.md)
+- [Security policy](SECURITY.md) and [contribution policy](CONTRIBUTING.md)
+- [Demo](docs/DEMO.md), [GitHub Action](docs/GITHUB_ACTION.md) and [release checklist](docs/RELEASE_CHECKLIST.md)
 
-When updating an existing installation:
+## Local state and removal
 
-- **Go toolchain:**
-  ```bash
-  go install github.com/aniklavida/code-clearance/cmd/code-clearance@latest
-  ```
-- **Release binary:**
-  Download the latest binary release for your platform, replace the existing executable, and run `code-clearance doctor` to verify the upgrade.
+Runs and raw artifacts are stored under the target's ignored `.clearance/` directory. To remove local state and an approved workspace MCP registration:
 
-## Clean uninstall path
+```bash
+code-clearance mcp unregister --host local --config .mcp.json --approve
+rm -rf .clearance clearance.yaml clearance-report.json clearance.html
+```
 
-To completely remove Code Clearance and all associated registrations:
-
-1. **Remove MCP registrations:**
-   Run unregister with approval:
-   ```bash
-   code-clearance mcp unregister --host local --approve
-   ```
-   Or manually remove the `"code-clearance"` entry from your host's MCP configuration file (e.g., `.mcp.json` or desktop host config).
-
-2. **Remove repository state:**
-   Delete the local clearance cache and policy files from repositories:
-   ```bash
-   rm -rf .clearance clearance.yaml
-   ```
-
-3. **Remove executable binary:**
-   - If installed via Go: `rm "$(go env GOPATH)/bin/code-clearance"`
-   - If installed manually: remove the binary from your local bin directory (e.g., `/usr/local/bin/code-clearance`).
-
+A Go-installed executable is under `$(go env GOPATH)/bin/code-clearance`; remove that executable separately if it is no longer needed.
