@@ -1,125 +1,80 @@
 # Version 1.0 release checklist
 
-State of this checklist after the `v1-release-tooling` change (2026-09-24).
-A box is ticked only where a named piece of evidence exists in this repository.
-Unticked boxes state exactly what is missing. Nothing here was tagged,
-published, or run through Docker in this change; see the notes on the boxes
-that depend on that.
+Status vocabulary is **Implemented and tested**, **Experimental**, **Planned for v1.0** and **Unsupported**. A box is checked only when named evidence exists in this repository. This checklist is not a release announcement.
 
-## Product
+## Product and evidence
 
-- [x] Quick, Full and Release modes behave as documented.
-  Evidence: `TestScopePlanner_QuickDirtyTree_RecordsExactFilesCommitFingerprint`,
-  `TestScopePlanner_FullScope_RecordsAllFiles`,
-  `TestEngine_DirtyTreeWithAllowDirtyFalseProducesBlockedNeverPass`,
-  `TestUnattendedAgentLoopReal` (release profile), all passing via `go test ./...`.
+- [x] **Implemented and tested:** core scan, normalization, raw artifact retention, correlation, deterministic policy, review, fix verification and report persistence.
+  Evidence: `go test ./...`; `TestUnattendedAgentLoopReal`; schema, policy, store, report and redaction tests.
 
-- [x] Known limitations and residual-risk semantics are explicit.
-  Evidence: `docs/SPEC.md` ("Cleared never means zero bugs"),
-  `docs/RELEASE_NOTES_v1.0.md` (Explicitly not in v1.0 / Scope, coverage and
-  residual risk), `docs/DEMO.md` beat 4,
-  `TestAcceptedRisk_MatchesAfterUnrelatedEdit`, `TestConstraint1_...`.
+- [x] **Implemented and tested:** Gitleaks and OSV-Scanner real-process adapters and parser fixtures.
+  Evidence: `TestGitleaks_RealProcess_FindsFixtureSecrets`, `TestOSVScanner_RealProcess_FindsVulnerableLockfile`, raw-artifact and timeout tests.
 
-- [ ] Every item in `docs/SPEC.md` release acceptance passes.
-  Missing: the GitHub Action is now implemented and its CLI/Action parity is
-  locally proven, but it has never been run on a live GitHub Actions runner,
-  and the cross-platform clean-install acceptance items remain unverified; see
-  the specific boxes below. Not a statement about the implemented core, which
-  is covered elsewhere.
+- [ ] **Experimental:** Semgrep and Trivy real-process verification.
+  Missing: the binaries were unavailable in the recorded run. Their parser fixtures and adapter failure tests exist, but that is not the same as real-process evidence.
 
-## Verification
+- [x] **Implemented and tested:** source-build five-minute quick start.
+  Evidence: the README sequence was run against a clean disposable Git fixture; approved init, doctor and `run --preset individual` completed and printed `Outcome: cleared`.
 
-- [x] Unit, parser-fixture, integration and end-to-end tests pass.
-  Evidence: `go build ./... && go vet ./... && go test ./...` pass on
-  darwin/arm64 (2026-09-24) and are run for ubuntu/macos/windows by
-  `.github/workflows/validate.yml`. Note: the Semgrep and Trivy real-process
-  tests skip where those binaries are absent; they are not in the CI
-  skipped-test guard, which covers Gitleaks and OSV-Scanner.
+- [x] **Implemented and tested:** public architecture, configuration, policy, adapter and report-schema documentation.
+  Evidence: `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/POLICY.md`, `docs/ADAPTER_GUIDE.md` and `docs/REPORT_SCHEMA.md`.
 
-- [ ] Clean Linux, macOS and Windows installation walkthroughs pass.
-  Missing: no release is published yet and no clean-machine walkthrough was
-  performed. `scripts/install.sh` and the release workflow are prepared but
-  unexercised.
+- [x] **Implemented and tested:** JavaScript/TypeScript, Python and Go worked examples use checked-in fixtures and real scanner reports.
+  Evidence: `docs/EXAMPLES.md` and the recorded fixture runs. Semgrep and Trivy unavailable states are disclosed.
 
-- [x] CLI, MCP and GitHub Action policy parity is verified.
-  Evidence: CLI/MCP parity is covered by
-  `TestEntryPoints_ReachIdenticalResultsThroughCore`; CLI/Action parity is
-  covered by
-  `TestCLIAndAction_ReachIdenticalPolicyOutcomeOnSameRecordedEvidence`, which
-  runs both transports against the same recorded evidence and configuration and
-  asserts identical outcome, reason and finding set. The GitHub Action exists as
-  `action.yml` backed by `cmd/code-clearance-action`, calling the same
-  `internal/app` core. This parity is proven with local tests only: the Action
-  has not been triggered on a live GitHub Actions runner in this change. Steps
-  to verify live later are in `docs/GITHUB_ACTION.md`.
+- [x] **Implemented and tested:** Code Clearance scanned its own repository and the complete result is published.
+  Evidence: `docs/DOGFOOD.md` records commit `f2137fa6b704dcd34a9f76a8f8da7afa52ea2219`, 149 files, `blocked`, 23 findings, 11 blocking findings, two unavailable scanners, empty residual risk and the OSV toolchain warning.
 
-- [x] Code Clearance successfully evaluates its own repository.
-  Evidence: `code-clearance scan --scope full --json .` was run on a clean
-  build and its report validated against `schemas/report.schema.json`. The run
-  returned `blocked` and named the test-fixture secrets and vulnerable
-  fixtures it found in this repository — an honest result, not a clean pass.
-  This dogfooding surfaced three schema-contract defects (null link arrays,
-  null run findings, and the over-broad "any unavailable check is incomplete"
-  rule); all are fixed and covered by
-  `TestCorrelateReport_SingleFindingHasNonNilLinkArrays`,
-  `TestConstraint1_UnavailableRequiredAdapterMustProduceIncompleteNeverPass`,
-  and the corrected `schemas/COMPATIBILITY.md` invariant.
+## Remaining acceptance work
+
+- [ ] **Planned for v1.0:** all specification release acceptance criteria pass.
+  Missing: clean Linux/macOS/Windows installation walkthroughs, live GitHub Action execution, published release evidence and a working private security-reporting path.
+
+- [ ] **Planned for v1.0:** independent documentation walkthrough by a person who did not write the instructions.
+  Pending: this requires an uninvolved human. The self-authored quick-start run is useful evidence but is not independent acceptance.
+
+- [ ] **Experimental:** fully affected Quick execution.
+  Missing: scope planning resolves changed files, but registered scanners still receive the repository directory. `TargetFiles` is not consumed by the production scan.
+
+- [ ] **Experimental:** required repository-command policy gating.
+  Missing: command crashes/timeouts are recorded as non-passing runs, but the evaluator's required-adapter check does not independently block a required command failure.
+
+- [ ] **Experimental:** clean Linux, macOS and Windows release walkthroughs.
+  Missing: no release is published and no clean-machine walkthrough was performed for all three platforms.
+
+- [ ] **Experimental:** live GitHub Action verification.
+  Missing: local Action tests pass, but the Action has not been triggered on a live hosted runner.
+
+- [ ] **Unsupported:** runtime third-party scanner plugin loading.
+  Missing by design: adapters are compiled into the binary. This is not a v1.0 acceptance gap.
 
 ## Trust and legal
 
-- [x] Public licence is approved and present.
-  Evidence: `LICENSE` (MIT, Copyright (c) 2026 Md Habibur Rahman), referenced
-  by `THIRD_PARTY_NOTICES.md`.
+- [x] **Implemented and tested:** public MIT licence is present.
+  Evidence: `LICENSE`.
 
-- [x] Every reused/adapted component has an exact source, commit and licence record.
-  Evidence: `THIRD_PARTY_NOTICES.md` records each external scanner CLI and each
-  compiled Go module at the exact version in `go.mod`/`go.sum`;
-  `go mod verify` reports all modules verified; `go version -m` on a
-  freshly built binary lists exactly those modules. No engine source is copied
-  or adapted (adapters invoke external CLIs).
+- [x] **Implemented and tested:** third-party notices and module verification exist.
+  Evidence: `THIRD_PARTY_NOTICES.md`, `go mod verify` and `go version -m` on a fresh local build.
 
-- [x] Third-party notices and required copyright text are published.
-  Evidence: `THIRD_PARTY_NOTICES.md`, re-verified against the module set in
-  this change.
+- [ ] **Planned for v1.0:** private security reporting works.
+  Missing: `SECURITY.md` says the private path is planned; no working address or private vulnerability workflow is published.
 
-- [ ] Security policy and private reporting path work.
-  Missing: `SECURITY.md` exists but states the private reporting address or
-  GitHub private vulnerability-reporting workflow "will be added before the
-  first public release". That path does not work yet.
+- [ ] **Planned for v1.0:** release artifacts have published checksums and provenance.
+  Missing: the workflow can generate checksums and build provenance, but no tag, CI release or downloadable artifact exists yet.
 
-- [ ] Release binaries have checksums and provenance/signing where supported.
-  Missing: `.github/workflows/release.yml` generates `checksums.txt` (sha256)
-  and attests build provenance via `actions/attest-build-provenance`, but no
-  tag was pushed, no binary was built by CI, and nothing was published. This
-  is deliberate for this change.
+- [ ] **Unsupported:** artifact/report signing.
+  Missing by design: no signing implementation is present. The release checklist does not treat build provenance as artifact signing.
 
 ## Launch readiness
 
-- [ ] README five-minute quick start works from a clean machine.
-  Missing: the steps and `TestOnboarding_CleanStateSequence_InitDoctorMCPScan`
-  exist, but no clean-machine run was performed.
+- [x] **Implemented and tested:** README states what the product does not do and never promises zero bugs.
+  Evidence: `README.md` status matrix and “What Code Clearance does not do”.
 
-- [x] Demo shows confirmation, false-positive rejection, verified fix and residual risk.
-  Evidence: `scripts/demo.sh` ran successfully (2026-09-24) and printed the four
-  beats in the locked order; `docs/DEMO.md` documents it. Residual risk is
-  shown as an accepted risk with owner and expiry.
+- [x] **Implemented and tested:** contribution gate remains closed while foundation/licence decisions are not recorded as open.
+  Evidence: `CONTRIBUTING.md`; the current pass does not open implementation contributions without a recorded foundation/licence decision.
 
-- [x] Examples cover JavaScript/TypeScript, Python and Go.
-  Evidence: `testdata/fixtures/js-ts/` (JavaScript/TypeScript),
-  `testdata/fixtures/python/` (Python), `testdata/fixtures/go/` (Go). The demo
-  seeds from the Go fixture; the others are used by discovery/adapter fixtures.
+- [ ] **Experimental:** demo reaches the documented residual-risk outcome.
+  Evidence: `bash scripts/demo.sh` exits zero, but the recorded final Release report is blocked by missing Git provenance. See `docs/DEMO.md`; do not use the script as release acceptance until fixed.
 
-- [x] Changelog and release notes are complete.
-  Evidence: `CHANGELOG.md` is brought up to date against `git log` through the
-  `v1-release-tooling` change; `docs/RELEASE_NOTES_v1.0.md` describes the real,
-  tested feature set and its gaps. The release notes are marked a draft until
-  every remaining box here is ticked.
-
-- [ ] Contributor starter issues are prepared.
-  Missing: out of scope for this change; no starter issues were created.
-
-- [x] Marketing claims match tested behavior.
-  Evidence: `docs/RELEASE_NOTES_v1.0.md` states scope, untested adapters,
-  unverified platforms and an explicit "not in v1.0" list, and makes no
-  "zero bugs" claim. `README.md` continues to mark unpublished behaviour as
-  planned.
+- [ ] **Planned for v1.0:** release notes, public distribution and security intake are published.
+  Missing: draft release notes and release tooling exist, but no release exists and private security intake is not live.

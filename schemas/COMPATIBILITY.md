@@ -1,5 +1,7 @@
 # Schema Compatibility and Migration Rules
 
+**Status: Implemented and tested** for the v1 compatibility rules and migrations named below.
+
 This document specifies the compatibility and evolution guarantees for the Code Clearance schema contracts:
 - `schemas/report.schema.json` (the evidence and clearance report contract)
 - `schemas/clearance.schema.json` (the repository policy configuration contract)

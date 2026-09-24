@@ -1,175 +1,61 @@
-# Code Clearance v1.0 release notes (draft)
+# Version 1.0 release notes (draft)
 
-**Status:** draft. Do not tag or publish until every box in
-[`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) is ticked with named
-evidence. This document describes what the code in this repository actually
-does today; it does not claim the untested behaviour the product
-specification still lists as planned.
+**Status: Planned for v1.0.** Do not tag or publish until every box in [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) is checked with named evidence. The current source tree is a working pre-release, not a published release.
 
-## What this release is
+## What the current source provides
 
-Code Clearance is a local-first assurance layer for coding agents, developers
-and CI. It orchestrates proven scanners as separate processes, normalizes and
-correlates their findings, records a human or agent challenge verdict, verifies
-fixes by rerunning the affected checks, and produces a commit-bound report that
-states its own coverage and residual risk.
+Code Clearance is a local-first assurance layer for coding agents, developers and CI. One Go application core serves CLI, local stdio MCP and an Action entry point. It invokes external scanners as bounded processes, preserves raw evidence, normalizes and correlates findings, records review state, verifies fixes with new evidence and produces a commit-bound report with coverage and residual-risk disclosure.
 
-The one loop it implements end to end is:
+The target loop is:
 
 ```text
 scan → normalize → correlate → challenge → fix → rescan/test → report
 ```
 
-It is not a new scanner engine, and "cleared" never means "zero bugs."
+**Implemented and tested:** the core, Gitleaks and OSV-Scanner real-process adapters, SARIF/native fixtures, deterministic policy, review/fix/verification, local MCP, terminal/JSON/HTML output, baselines, risk acceptance, source-build onboarding and schema compatibility.
 
-## Platforms and artifacts
+**Experimental:** Semgrep and Trivy real-process behavior in the recorded environment, the GitHub Action on a hosted runner, desktop MCP host GUIs, Quick changed-file adapter execution, required-command policy gating and release tooling execution.
 
-- macOS: `darwin/amd64`, `darwin/arm64`
-- Linux: `linux/amd64`, `linux/arm64`
-- Every artifact is published with a `checksums.txt` (sha256) and a GitHub
-  build-provenance attestation.
+**Unsupported:** a published release, runtime scanner plugins, signing, a hosted dashboard, copied scanner engines and any zero-bug guarantee.
 
-Windows binaries are intentionally **not** part of this release tooling yet and
-are listed as a pending checklist item. Do not describe this release as
-cross-platform until that is done.
+## Current adapters
 
-## Install and verify
-
-Tagged binaries (once published) are the supported path:
-
-```bash
-# Download the artifact for your platform and checksums.txt, then:
-sha256sum --check checksums.txt
-gh attestation verify code-clearance_v1.0.0_linux_amd64 --repo aniklavida/code-clearance
-install -m 0755 code-clearance_v1.0.0_linux_amd64 ~/.local/bin/code-clearance
-```
-
-`scripts/install.sh` automates the download and refuses to install a binary
-whose sha256 does not match the published checksum. A Homebrew formula template
-lives at `packaging/homebrew/code-clearance.rb`; it has not been published to
-any tap.
-
-If you build from source instead:
-
-```bash
-go install github.com/aniklavida/code-clearance/cmd/code-clearance@latest
-```
-
-A `go install` build carries no release version, checksum or signature, and
-`code-clearance version` says so rather than implying otherwise.
-
-## What v1.0 delivers
-
-### One core, three entry points
-
-- CLI: `init`, `doctor`, `mcp`, `run`, `report`, `scan`, `record-review`,
-  `verify`, `fix-context`, `findings`, `serve`, `version`.
-- Local stdio MCP server exposing `run_clearance_scan` / `clearance_scan`,
-  `clearance_run`, `clearance_report`, `clearance_get_findings`,
-  `clearance_record_review`, `clearance_get_fix_context` and `clearance_verify`.
-- The same application core backs both; `TestEntryPoints_ReachIdenticalResultsThroughCore`
-  and `TestTerminalAndJSONReportsAgreeOnOutcomeCoverageAndUncovered` assert the
-  entry points agree.
-
-### Modes
-
-| Mode | Scope | Outcome behaviour |
+| Adapter | Recorded capability | Status |
 |---|---|---|
-| Quick | Changed files (dirty tree, base-commit diff, or `HEAD~1`) | Evaluated against the quick profile |
-| Full | All tracked and untracked files | Evaluated against the full profile |
-| Release | Full checks plus strict policy/provenance | Blocks configured confirmed findings and failed required commands |
+| Gitleaks | repository secret scanning | **Implemented and tested** |
+| OSV-Scanner | dependency vulnerabilities | **Implemented and tested** |
+| Semgrep | native JSON static analysis | **Experimental** |
+| Trivy | filesystem-mode dependency scanning | **Experimental** |
 
-Scope resolution is covered by `TestScopePlanner_QuickDirtyTree_RecordsExactFilesCommitFingerprint`
-and `TestScopePlanner_FullScope_RecordsAllFiles`.
+Scanner versions are detected and recorded from the host. The adapters validate supported major-version ranges; they do not pin the host binary to a fixed patch release.
 
-### Adapters
+## Interfaces
 
-Four adapters run as separate processes. None of their code is compiled into
-the binary:
+**Implemented and tested:**
 
-| Adapter | Capability | Pinned version | Exercised end to end here |
-|---|---|---|---|
-| Gitleaks | secrets | v8.30.1 | yes |
-| OSV-Scanner | dependency vulnerabilities | v2.5.1 | yes |
-| Semgrep Community Edition | static patterns | v1.90.0 | not in this environment |
-| Trivy | dependency, filesystem, container and IaC | v0.58.0 | not in this environment |
+- CLI: `init`, `doctor`, `mcp`, `run`, `report`, `scan`, `record-review`, `verify`, `fix-context`, `findings`, `baseline`, `serve`, `version`;
+- local stdio MCP tools for scan, run, report, review, findings, fix context and verification;
+- terminal, JSON and standalone offline HTML reports;
+- local raw artifact and review persistence.
 
-An unavailable required adapter produces `incomplete`, never a pass, and the
-report names the missing check
-(`TestConstraint1_UnavailableRequiredAdapterMustProduceIncompleteNeverPass`,
-`TestEngine_MissingRequiredScannerProducesIncompleteNotSilence`).
+**Experimental:** the composite GitHub Action and its SARIF/annotation projection are locally tested but have not run on a hosted runner.
 
-### Challenge, fix, verification and policy
+**Planned for v1.0:** tagged release artifacts, install commands and the final Action documentation are not a substitute for a published, verified release.
 
-- Challenge states: `unreviewed`, `confirmed`, `rejected`, `accepted-risk`,
-  `fixed`, `unresolved`.
-- A finding can only become `fixed` through new recorded evidence from a
-  verification rerun; asserting it fixed changes nothing
-  (`TestEnforceFindingBecomesFixedOnlyThroughVerificationRunEvidence`,
-  `TestEnforceCannotMarkFixedWithoutRerun_CLI`,
-  `TestEnforceCannotMarkFixedWithoutRerun_MCP`).
-- Fix context is limited to one finding's evidence and constraints
-  (`TestGetFixContext_ReturnsOnlyRequestedFindingEvidenceAndConstraints`).
-- Risk acceptance carries a reason, an owner and an expiry; expired acceptance
-  reverts to blocking (`TestAcceptedRisk_MatchesAfterUnrelatedEdit`).
-- `human_required_classes` prevents an agent or tool reviewer from clearing
-  matching findings without a human (`TestConstraint4_HumanRequiredClassesCannotBeClearedByAgent`).
+## Modes and policy
 
-### Evidence and trust properties
+**Implemented and tested:** scope planning for Quick, Full and Release; repository/commit/dirty-tree binding; deterministic outcomes; required-adapter completeness; provenance for Release; critical/high/medium/low severity policy; human-required classes; expiring risk acceptance; and baseline disclosure.
 
-- Raw scanner output is retained after normalization and referenced from every
-  finding; redaction happens at the normalization boundary
-  (`TestSecretRedaction_ScannerOutputReportAndMCPPayload`).
-- Fingerprints are deterministic and stable across unrelated line edits
-  (`TestFingerprint_DeterministicAcrossRuns`, `TestFingerprint_StableAcrossLineInsertion`).
-- Identical evidence and configuration produce byte-identical verdicts,
-  independent of run order
-  (`TestConstraint3_IdenticalRecordedEvidenceEvaluatedRepeatedlyProducesIdenticalVerdict`,
-  `TestConstraint3_UncoveredOrderingIsIndependentOfRunOrder`).
-- Repository-defined commands must be on an allowlist and never reach a shell
-  (`TestHostileClearanceConfig_CommandsNeverReachShell`,
-  `TestCommands_UntrustedInput_HostileValuesRejectedOrInert`).
-- No network access under default configuration
-  (`TestDefaultScan_OpensNoNetworkConnection`).
+**Experimental:** Quick records the changed-file set but currently passes the repository directory to registered scanners. Required repository-command failures are visible but do not independently force the evaluator to block. `outcomes.minimum_evidence` is schema-valid documentation rather than a fully dynamic switchboard.
 
-## Demo
+## What is not included
 
-`scripts/demo.sh` runs the real loop against a throwaway copy of
-`testdata/fixtures/go` and prints the four beats in the locked order:
-a confirmed issue, a rejected false positive, a verified fix, then residual
-risk. See [`docs/DEMO.md`](DEMO.md).
+- **Planned for v1.0:** published Linux/macOS/Windows binaries, a working private vulnerability-reporting path, live CI release evidence and independent human documentation acceptance.
+- **Unsupported:** zero-bug claims, universal scanner coverage, runtime plugin loading, artifact/report signing and automatic mutation without approval.
+- **Experimental:** Windows packaging, Semgrep/Trivy real-process verification and a fully affected-check Quick mode.
 
-## Explicitly not in v1.0
+## Release evidence
 
-- Windows binaries.
-- GitHub Action and pull-request annotations.
-- Local HTML reports (terminal, JSON and SARIF export exist today).
-- Baselines (risk acceptance with expiry exists; named baselines do not).
-- The optional OpenSSF Scorecard adapter.
-- Real-process verification of the Semgrep and Trivy adapters in this
-  environment (their adapter tests exist but skip where the binaries are
-  absent).
-- A published Homebrew tap or any other package-manager registry.
-- A built or tested Docker image.
+The complete real self-scan is published in [`DOGFOOD.md`](DOGFOOD.md). It was `blocked` with 23 normalized findings, 11 blocking findings and two unavailable optional scanners. The demo is **Experimental** and currently ends with a provenance-blocked Release report; its output does not prove the claimed residual-risk outcome.
 
-## Scope, coverage and residual risk
-
-The product promise is that a clearance result discloses what it did and did
-not check. This is not a claim of universal language or bug coverage, and it is
-not a claim that no bugs remain. When a required check is unavailable, crashed
-or times out, the result is `incomplete`; when findings are accepted as
-residual risk, the result says so and names the accepting owner and expiry.
-
-## Cutting the release
-
-The tag is a human action. After every checklist box is ticked:
-
-```bash
-git tag -a v1.0.0 -m "Code Clearance v1.0.0"
-git push origin v1.0.0
-```
-
-Pushing the tag triggers `.github/workflows/release.yml`, which verifies the
-tagged commit, builds the four binaries, writes `checksums.txt`, attests build
-provenance, and creates the GitHub Release. Nothing in this repository creates
-the tag automatically.
+Do not cut a release until the checklist is accurate and every release artifact has checksum and provenance evidence.

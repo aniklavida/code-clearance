@@ -1,6 +1,6 @@
 # Code Clearance — public product specification
 
-**Status:** Pre-implementation v1.0 specification
+**Status:** Living v1.0 product specification. Capability claims use **Implemented and tested**, **Experimental**, **Planned for v1.0** or **Unsupported**; see the README for the current status matrix.
 **Version target:** Complete public v1.0, supporting Linux, macOS and Windows
 
 ## Product

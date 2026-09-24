@@ -1,5 +1,7 @@
 # SARIF 2.1.0 Mapping and Omission Documentation
 
+**Status: Implemented and tested** for the shared parser/exporter and local SARIF fixtures. The public CLI does not currently expose a general SARIF output flag; the Action emits its SARIF projection.
+
 Code Clearance provides bi-directional interoperability with OASIS SARIF (Static Analysis Results Interchange Format) version 2.1.0. This document defines the exact field mappings when exporting a Code Clearance Report to SARIF, and catalogs the richer assurance fields that SARIF cannot natively express.
 
 The list of unsupported fields is an intentional deliverable, capturing the design differences between a raw scanner interchange format and an end-to-end evidence assurance model.
