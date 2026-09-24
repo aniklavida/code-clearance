@@ -20,7 +20,12 @@ into this project's binary.
 ## Go modules compiled into this binary
 
 Verified against each module's own `LICENSE` file at the exact version
-recorded in `go.mod` / `go.sum`, 2026-09-23.
+recorded in `go.mod` / `go.sum`, 2026-09-23, and re-checked against the
+vendored module set on 2026-09-24. `go mod verify` reports all modules
+verified, and `go version -m` on a freshly built `code-clearance` binary
+lists exactly the modules below and no others. `go list -m all` additionally
+lists test-only and transitive modules that are not linked into the shipped
+binary; those are deliberately out of scope for this notice.
 
 | Module | Version | License |
 |---|---|---|

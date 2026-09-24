@@ -1,0 +1,197 @@
+name: Release
+
+# Cutting a release is deliberately a human action: push an annotated tag such
+# as v1.0.0 and this workflow builds, verifies, checksums, attests and publishes
+# the corresponding binaries. Nothing in this repository creates the tag for
+# you. See docs/RELEASE_NOTES_v1.0.md and docs/RELEASE_CHECKLIST.md.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Least privilege for the whole workflow. The release job needs contents:write
+# to create the GitHub Release, id-token:write and attestations:write for the
+# build-provenance attestation. Verify and build jobs do not need any of it.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # A tag can be pushed onto a commit that never ran the normal branch
+  # validation, so the release does not trust that it did. This job reruns the
+  # same gate as .github/workflows/validate.yml, including installing the real
+  # scanners so the adapter tests execute instead of skipping.
+  verify:
+    name: Verify the tagged commit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change these files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Install scanners
+        shell: bash
+        run: |
+          go install -ldflags="-X=github.com/zricethezav/gitleaks/v8/cmd.Version=8.18.4" github.com/zricethezav/gitleaks/v8@v8.18.4
+          ARCH="$(go env GOARCH)"
+          URL="https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_linux_${ARCH}"
+          curl -sL "$URL" -o "$(go env GOPATH)/bin/osv-scanner"
+          chmod +x "$(go env GOPATH)/bin/osv-scanner"
+
+      - name: Test
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -v ./... | tee test.log
+
+          # The scanner-backed adapter tests must execute, not skip. A skipped
+          # real-tool test is not evidence that the adapter works.
+          SKIPPED_TESTS=$(grep -E "--- SKIP: (TestGitleaks_RealProcess_FindsFixtureSecrets|TestOSVScanner_RealProcess_FindsVulnerableLockfile|TestGitleaks_RealProcess_CleanDirectoryReportsOK|TestOSVScanner_RealProcess_HungProcessKilledByTimeout|TestGitleaks_TimedOutRunIsNeverReportedAsAPass|TestAdapters_RawOutputRetainedInStoreAndReferencedInFindings|TestOSVScanner_RawOutputRetainedInStoreAndReferencedInFindings|TestAdapters_CrashingAdapterDoesNotCorruptOtherResults|TestGitleaks_RecordedCommandIsTheCommandThatRan|TestUnattendedAgentLoopReal|TestDetectToolVersion_RealInstalledTools)" test.log || true)
+
+          if [ -n "$SKIPPED_TESTS" ]; then
+            echo "ERROR: The following real-tool tests were skipped:"
+            echo "$SKIPPED_TESTS"
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # v1.0 ships tagged binaries for macOS and Linux. Windows binaries are
+        # intentionally out of scope here; see docs/RELEASE_CHECKLIST.md.
+        include:
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build the tagged binary
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # -X main.version makes `code-clearance version` report the real tag
+          # rather than an unsigned development build. -trimpath keeps local
+          # filesystem paths out of the binary.
+          out="code-clearance_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o "dist/${out}" ./cmd/code-clearance
+          file "dist/${out}"
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-clearance_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist/code-clearance_*
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download every built binary
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate sha256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum code-clearance_* > checksums.txt
+          echo "--- checksums.txt ---"
+          cat checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*
+
+      - name: Create the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The tag already exists; --verify-tag refuses to invent one.
+          if [ -f docs/RELEASE_NOTES_v1.0.md ]; then
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --title "Code Clearance ${GITHUB_REF_NAME}" \
+              --notes-file docs/RELEASE_NOTES_v1.0.md \
+              --verify-tag
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --title "Code Clearance ${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --verify-tag
+          fi
+
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo "### Released ${GITHUB_REF_NAME}"
+            echo
+            echo "Artifacts:"
+            echo '```'
+            ls -1 dist
+            echo '```'
+            echo
+            echo "Verify a download with:"
+            echo '```'
+            echo "gh attestation verify <file> --repo ${GITHUB_REPOSITORY}"
+            echo "sha256sum --check checksums.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

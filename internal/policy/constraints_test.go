@@ -206,7 +206,8 @@ func TestConstraint1_UnavailableRequiredAdapterMustProduceIncompleteNeverPass(t 
 
 	t.Run("schema-enforces-unrepresentable-pass-for-unavailable", func(t *testing.T) {
 		// Attempting to construct a report with outcome="cleared" while declaring
-		// an unavailable check in uncovered.unavailable MUST fail schema validation.
+		// that a required check could not complete (uncovered.required_incomplete)
+		// MUST fail schema validation.
 		dishonestJSON := []byte(`{
 			"schema_version": "v1",
 			"target": {
@@ -227,7 +228,8 @@ func TestConstraint1_UnavailableRequiredAdapterMustProduceIncompleteNeverPass(t 
 						"tool": "gitleaks",
 						"reason": "gitleaks missing on host"
 					}
-				]
+				],
+				"required_incomplete": true
 			},
 			"coverage": {
 				"scope": "quick",
@@ -244,7 +246,51 @@ func TestConstraint1_UnavailableRequiredAdapterMustProduceIncompleteNeverPass(t 
 
 		err := schema.ValidateReport(dishonestJSON)
 		if err == nil {
-			t.Fatal("schema permitted dishonest report: outcome='cleared' with unavailable check present!")
+			t.Fatal("schema permitted dishonest report: outcome='cleared' with a required check incomplete!")
+		}
+
+		// The converse must remain valid: an *optional* check being unavailable
+		// is honest coverage, not a pass, and must not force the whole report
+		// to incomplete. Before this was made precise, any unavailable check
+		// forced incomplete, so a normal report with an optional scanner absent
+		// failed its own schema.
+		optionalUnavailableJSON := []byte(`{
+			"schema_version": "v1",
+			"target": {
+				"repository": "https://github.com/example/repo",
+				"commit": "abcdef123456",
+				"dirty": false,
+				"fingerprint": "clean"
+			},
+			"outcome": "cleared",
+			"runs": [],
+			"findings": [],
+			"uncovered": {
+				"skipped": [],
+				"crashed": [],
+				"timed_out": [],
+				"unavailable": [
+					{
+						"tool": "trivy",
+						"reason": "trivy missing on host (optional adapter)"
+					}
+				]
+			},
+			"coverage": {
+				"scope": "quick",
+				"files_checked": [],
+				"adapters_ran": [],
+				"summary": "honest coverage report"
+			},
+			"residual_risk": [],
+			"timestamps": {
+				"started_at": "2026-09-17T12:00:00Z",
+				"completed_at": "2026-09-17T12:01:00Z"
+			}
+		}`)
+
+		if err := schema.ValidateReport(optionalUnavailableJSON); err != nil {
+			t.Fatalf("schema rejected a valid report with only an optional check unavailable: %v", err)
 		}
 	})
 }

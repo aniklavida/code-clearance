@@ -1,0 +1,8 @@
+.git
+.clearance
+code-clearance
+dist
+*.test
+*.out
+.DS_Store
+testdata/fixture-repo/.clearance
