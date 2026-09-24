@@ -147,7 +147,41 @@ code-clearance mcp verify --config .mcp.json
 code-clearance scan --scope quick
 ```
 
-## Updating Code Clearance
+### Daily-use profiles, baselines and reports
+
+Use a named policy preset for a local session, a shared team workflow, or a
+release gate:
+
+```bash
+code-clearance run --preset individual --html-out clearance.html
+code-clearance run --preset team --html-out clearance.html
+code-clearance run --preset release --html-out release.html
+```
+
+To adopt an existing backlog, run a first report, record the baseline, and then
+rerun the Quick report. Suppressed findings remain in the report and are
+summarised with the baseline source and count:
+
+```bash
+code-clearance baseline create
+code-clearance run --preset individual --html-out clearance.html
+```
+
+Accepted risk is explicit and expiring:
+
+```bash
+code-clearance record-review --fingerprint <fingerprint> \
+  --status accepted-risk --reason "temporary exception" \
+  --identity alice --expires-at 2030-01-01T00:00:00Z
+```
+
+HTML reports are standalone local files with inline styles; they do not load
+fonts, scripts, stylesheets, or any other network resource.
+
+A signed report attestation tied to the commit and report digest remains a
+follow-up; this change does not add a signing dependency without an existing
+repository signing mechanism.
+
 
 When updating an existing installation:
 

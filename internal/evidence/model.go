@@ -138,6 +138,12 @@ type Location struct {
 
 // Finding is one normalized result, traceable back to exactly one raw
 // scanner result in exactly one tool run.
+type RiskAcceptance struct {
+	Reason    string `json:"reason"`
+	Owner     string `json:"owner"`
+	ExpiresAt string `json:"expires_at"`
+}
+
 type Finding struct {
 	// ID is a stable identifier derived deterministically.
 	ID string `json:"id"`
@@ -183,6 +189,9 @@ type Finding struct {
 
 	// ChallengeStatus tracks triage state.
 	ChallengeStatus ChallengeStatus `json:"challenge_status"`
+
+	RiskAcceptance       *RiskAcceptance `json:"risk_acceptance,omitempty"`
+	SuppressedByBaseline bool            `json:"suppressed_by_baseline,omitempty"`
 
 	// ChallengeRationale records the reason behind the challenge verdict.
 	ChallengeRationale string `json:"challenge_rationale,omitempty"`
@@ -287,9 +296,31 @@ type UncoveredChecks struct {
 // CoverageReport summarizes the scope and tools that executed.
 type CoverageReport struct {
 	Scope        string   `json:"scope"`
+	Profile      string   `json:"profile,omitempty"`
 	FilesChecked []string `json:"files_checked"`
 	AdaptersRan  []string `json:"adapters_ran"`
 	Summary      string   `json:"summary"`
+}
+
+type BaselineReport struct {
+	Source           string `json:"source"`
+	FingerprintCount int    `json:"fingerprint_count"`
+	SuppressedCount  int    `json:"suppressed_count"`
+	Active           bool   `json:"active"`
+}
+
+type ProvenanceCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Detail string `json:"detail"`
+}
+
+type ProvenanceReport struct {
+	Commit     string            `json:"commit"`
+	Repository string            `json:"repository"`
+	Dirty      bool              `json:"dirty"`
+	Verified   bool              `json:"verified"`
+	Checks     []ProvenanceCheck `json:"checks"`
 }
 
 // ResidualRiskItem captures an accepted risk rule or known limitation.
@@ -332,6 +363,8 @@ type Report struct {
 	Findings     []Finding          `json:"findings"`
 	Uncovered    UncoveredChecks    `json:"uncovered"`
 	Coverage     CoverageReport     `json:"coverage"`
+	Baseline     *BaselineReport    `json:"baseline,omitempty"`
+	Provenance   *ProvenanceReport  `json:"provenance,omitempty"`
 	ResidualRisk []ResidualRiskItem `json:"residual_risk"`
 	Timestamps   ReportTimestamps   `json:"timestamps"`
 }

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aniklavida/code-clearance/internal/baseline"
 	"github.com/aniklavida/code-clearance/internal/correlate"
 	"github.com/aniklavida/code-clearance/internal/evidence"
 	"github.com/aniklavida/code-clearance/internal/policy"
@@ -24,8 +25,10 @@ type ScannerAdapter func(ctx context.Context, targetDir string) []evidence.RunOu
 // ScanOptions configures a clearance scan run.
 type ScanOptions struct {
 	Scope        string // "quick", "full", "release" (default: "quick")
+	Preset       string // "individual", "team", or "release"
 	BaseCommit   string // optional base commit for diff calculations
 	StoreRoot    string // optional override for artifact store directory
+	BaselinePath string // optional override for the persisted baseline file
 	AllowNetwork bool   // whether network access is permitted (default: false)
 
 	// Config is the clearance policy to evaluate against. When nil the
@@ -92,6 +95,22 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 	cfg := policy.DefaultConfig()
 	if opts.Config != nil {
 		cfg = *opts.Config
+	}
+	if opts.Scope == "" {
+		opts.Scope = "quick"
+	}
+	if opts.Preset != "" {
+		var presetErr error
+		cfg, presetErr = policy.ApplyPreset(cfg, opts.Preset)
+		if presetErr != nil {
+			return evidence.Report{}, presetErr
+		}
+	}
+	if strings.EqualFold(opts.Scope, "release") && opts.Preset == "" {
+		cfg, _ = policy.ApplyPreset(cfg, "release")
+	}
+	if strings.EqualFold(opts.Preset, "release") {
+		opts.Scope = "release"
 	}
 
 	// 1. Scope Planner: Resolve concrete files and checks bound to target state
@@ -291,6 +310,9 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 			// Filter out internal store artifacts from scanner findings
 			var filteredFindings []evidence.Finding
 			for _, f := range o.Findings {
+				if f.Fingerprint == "" {
+					f.Fingerprint = correlate.Fingerprint(f)
+				}
 				isExcluded := false
 				for _, loc := range f.Locations {
 					cleanURI := filepath.ToSlash(loc.URI)
@@ -335,6 +357,7 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 		},
 		Coverage: evidence.CoverageReport{
 			Scope:        plan.Scope,
+			Profile:      opts.Preset,
 			FilesChecked: plan.FilesChecked,
 			AdaptersRan:  adaptersRan,
 			Summary: fmt.Sprintf("Clearance scan completed (%s): %d files checked, %d checks ran",
@@ -349,6 +372,46 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 
 	// 5. Correlate and deduplicate findings across runs
 	correlate.CorrelateReport(&report)
+	if report.Coverage.Profile == "" && plan.Scope == "release" {
+		report.Coverage.Profile = "release"
+	}
+
+	baselinePath := opts.BaselinePath
+	if baselinePath == "" {
+		baselinePath = baseline.DefaultPath(absDir)
+	}
+	if loaded, baselineErr := baseline.Load(baselinePath); baselineErr == nil {
+		blocked := make(map[string]bool, len(loaded.Fingerprints))
+		for _, fingerprint := range loaded.Fingerprints {
+			blocked[fingerprint] = true
+		}
+		suppressed := 0
+		for i := range report.Findings {
+			if blocked[report.Findings[i].Fingerprint] {
+				report.Findings[i].SuppressedByBaseline = true
+				suppressed++
+			}
+		}
+		for i := range report.Runs {
+			for j := range report.Runs[i].Findings {
+				if blocked[report.Runs[i].Findings[j].Fingerprint] {
+					report.Runs[i].Findings[j].SuppressedByBaseline = true
+				}
+			}
+		}
+		baselineSource := filepath.ToSlash(baselinePath)
+		if relative, relErr := filepath.Rel(absDir, baselinePath); relErr == nil {
+			baselineSource = filepath.ToSlash(relative)
+		}
+		report.Baseline = &evidence.BaselineReport{
+			Source:           baselineSource,
+			FingerprintCount: len(loaded.Fingerprints),
+			SuppressedCount:  suppressed,
+			Active:           true,
+		}
+	} else if !os.IsNotExist(baselineErr) {
+		return evidence.Report{}, fmt.Errorf("load baseline: %w", baselineErr)
+	}
 
 	if reviews, err := st.GetReviews(); err == nil && len(reviews) > 0 {
 		for i := range report.Findings {
@@ -369,6 +432,13 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 				}
 				report.Findings[i].ChallengeStatus = rec.ChallengeStatus
 				report.Findings[i].ChallengeRationale = rec.Reason
+				if rec.ChallengeStatus == evidence.ChallengeAcceptedRisk {
+					report.Findings[i].RiskAcceptance = &evidence.RiskAcceptance{
+						Reason:    rec.Reason,
+						Owner:     rec.ReviewerIdentity,
+						ExpiresAt: rec.ExpiresAt,
+					}
+				}
 				report.Findings[i].Reviewer = evidence.Reviewer{
 					Type:     rec.ReviewerType,
 					Identity: rec.ReviewerIdentity,
@@ -384,6 +454,10 @@ func (e *Engine) ScanWithOptions(ctx context.Context, targetDir string, opts Sca
 				}
 			}
 		}
+	}
+
+	if plan.Scope == "release" {
+		report.Provenance = ptrProvenance(BuildProvenance(plan.Target, report.Runs))
 	}
 
 	// 6. Apply deterministic policy verdict

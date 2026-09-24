@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aniklavida/code-clearance/internal/evidence"
@@ -23,6 +24,14 @@ type RecordReviewArgs struct {
 func RecordReview(ctx context.Context, args RecordReviewArgs) error {
 	if args.ChallengeStatus == string(evidence.ChallengeFixed) {
 		return fmt.Errorf("a finding cannot be marked fixed directly: findings become fixed only through new recorded evidence from a verification run (clearance_verify)")
+	}
+	if args.ChallengeStatus == string(evidence.ChallengeAcceptedRisk) {
+		if strings.TrimSpace(args.Reason) == "" || strings.TrimSpace(args.ReviewerIdentity) == "" || strings.TrimSpace(args.ExpiresAt) == "" {
+			return fmt.Errorf("accepted risk requires reason, owner, and expires-at")
+		}
+		if _, err := time.Parse(time.RFC3339, args.ExpiresAt); err != nil {
+			return fmt.Errorf("accepted risk expiry must be an RFC3339 timestamp: %w", err)
+		}
 	}
 
 	absDir, err := filepath.Abs(args.TargetDir)

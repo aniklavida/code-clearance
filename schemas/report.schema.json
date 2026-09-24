@@ -38,6 +38,12 @@
     "reason": {
       "type": "string"
     },
+    "baseline": {
+      "$ref": "#/$defs/baseline"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
     "runs": {
       "type": "array",
       "items": {
@@ -100,6 +106,7 @@
       "required": ["scope", "files_checked", "adapters_ran", "summary"],
       "properties": {
         "scope": { "type": "string" },
+        "profile": { "type": "string" },
         "files_checked": {
           "type": "array",
           "items": { "type": "string" }
@@ -163,7 +170,7 @@
         "type": "object",
         "properties": {
           "outcome": {
-            "enum": ["incomplete"]
+            "enum": ["incomplete", "blocked"]
           }
         }
       }
@@ -261,6 +268,8 @@
           "type": "string",
           "enum": ["unreviewed", "confirmed", "rejected", "accepted-risk", "fixed", "unresolved"]
         },
+        "risk_acceptance": { "$ref": "#/$defs/risk_acceptance" },
+        "suppressed_by_baseline": { "type": "boolean" },
         "challenge_rationale": {
           "type": "string"
         },
@@ -319,6 +328,51 @@
         },
         "raw_artifact": { "$ref": "#/$defs/artifact_reference" },
         "raw_index": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["source", "fingerprint_count", "suppressed_count", "active"],
+      "properties": {
+        "source": { "type": "string" },
+        "fingerprint_count": { "type": "integer" },
+        "suppressed_count": { "type": "integer" },
+        "active": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "risk_acceptance": {
+      "type": "object",
+      "required": ["reason", "owner", "expires_at"],
+      "properties": {
+        "reason": { "type": "string" },
+        "owner": { "type": "string" },
+        "expires_at": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["commit", "repository", "dirty", "verified", "checks"],
+      "properties": {
+        "commit": { "type": "string" },
+        "repository": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "verified": { "type": "boolean" },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "status", "detail"],
+            "properties": {
+              "name": { "type": "string" },
+              "status": { "type": "string" },
+              "detail": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },
