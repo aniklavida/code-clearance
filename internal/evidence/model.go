@@ -274,6 +274,14 @@ type UncoveredChecks struct {
 	Crashed     []UncoveredCheck `json:"crashed"`
 	TimedOut    []UncoveredCheck `json:"timed_out"`
 	Unavailable []UncoveredCheck `json:"unavailable"`
+
+	// RequiredIncomplete is true when at least one required adapter or command
+	// could not complete — skipped, crashed, timed out or unavailable. The
+	// report schema uses it to make "an unavailable required check can never be
+	// represented as a pass" structural, without rejecting a valid report
+	// merely because an optional check was unavailable. Optional is false when
+	// every required check completed, and omitted from JSON when false.
+	RequiredIncomplete bool `json:"required_incomplete,omitempty"`
 }
 
 // CoverageReport summarizes the scope and tools that executed.

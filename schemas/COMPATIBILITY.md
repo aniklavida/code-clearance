@@ -27,6 +27,7 @@ The following invariants are hard-locked across all versions and may never be lo
 
 1. **Unavailable Required Checks Never Pass:**
    If a required scanner or command is missing from PATH, fails to execute, crashes, times out, or is skipped, the clearance outcome must be `incomplete`. It is structurally impossible to represent an unavailable required check as a pass.
+   The report schema enforces this through the optional `uncovered.required_incomplete` boolean: when it is `true`, `outcome` must be `incomplete`. An **optional** check being unavailable does not force `incomplete` — it stays visible under `uncovered.unavailable` so coverage is not hidden. (This made the earlier schema, which forced `incomplete` for *any* unavailable check, reject valid reports produced by the engine whenever an optional scanner was absent; the invariant was narrowed to the required checks it was always meant to protect, which is not a loosening of that invariant.)
 2. **Preservation of Raw Evidence:**
    Normalization must never discard source evidence. `native_severity` and `raw_artifact` references are mandatory fields on every finding. Removing or making them optional is prohibited.
 3. **Deterministic Verdicts:**

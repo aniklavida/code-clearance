@@ -154,6 +154,12 @@ func Evaluate(cfg Config, rep evidence.Report) EvaluationVerdict {
 		}
 	}
 
+	// Record, structurally, that a required check could not complete. This is
+	// the fact the report schema uses to forbid representing an unavailable
+	// required check as a pass, while still allowing an optional check to be
+	// unavailable in an otherwise valid cleared/blocked report.
+	verdict.Uncovered.RequiredIncomplete = len(unavailableRequired)+len(missingRequired)+len(crashedOrTimedOutRequired) > 0
+
 	if len(unavailableRequired) > 0 {
 		sort.Strings(unavailableRequired)
 		verdict.Outcome = evidence.OutcomeIncomplete

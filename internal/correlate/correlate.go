@@ -299,6 +299,12 @@ func CorrelateRuns(runs []evidence.RunOutcome) ([]evidence.Finding, []evidence.R
 	// Step 1: Intra-adapter deduplication per run
 	for i := range updatedRuns {
 		updatedRuns[i].Findings = Deduplicate(updatedRuns[i].Findings)
+		// The report schema requires findings to be an array on every run,
+		// including runs that produced none (a missing or clean scanner). A
+		// nil here made a valid scan emit a schema-invalid report.
+		if updatedRuns[i].Findings == nil {
+			updatedRuns[i].Findings = []evidence.Finding{}
+		}
 	}
 
 	// Step 2: Collect references to all findings across runs
@@ -468,7 +474,11 @@ func CorrelateRuns(runs []evidence.RunOutcome) ([]evidence.Finding, []evidence.R
 		}
 
 		correlated.RelatedFindingIDs = groupIDs
-		var dups []string
+		// dups must be a non-nil empty slice: the report schema requires an
+		// array on every finding, and a single-member correlation group is the
+		// common case. A nil here made a valid scan emit a report that failed
+		// its own published schema.
+		dups := []string{}
 		for _, id := range groupIDs {
 			if id != correlated.ID {
 				dups = append(dups, id)
@@ -496,13 +506,16 @@ func CorrelateReport(report *evidence.Report) {
 		return
 	}
 	findings, updatedRuns := CorrelateRuns(report.Runs)
+	if findings == nil {
+		findings = []evidence.Finding{}
+	}
 	report.Findings = findings
 	report.Runs = updatedRuns
 }
 
 func dedupeAndSortStrings(slice []string) []string {
 	seen := make(map[string]bool)
-	var out []string
+	out := []string{}
 	for _, s := range slice {
 		s = strings.TrimSpace(s)
 		if s != "" && !seen[s] {

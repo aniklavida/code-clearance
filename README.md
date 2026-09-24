@@ -27,6 +27,9 @@ Code Clearance will not promise zero bugs. A result must disclose its scope, too
 - [Architecture](docs/ARCHITECTURE.md)
 - [Build-to-release roadmap](docs/ROADMAP.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Public demo](docs/DEMO.md)
+- [v1.0 release notes (draft)](docs/RELEASE_NOTES_v1.0.md)
+- [Running in a container](docs/DOCKER.md)
 
 ## Current status
 
@@ -34,11 +37,20 @@ The product specification, the contribution foundation, and the first working sl
 
 What runs today: a bounded process runner with cancellation and captured exit state, SARIF 2.1.0 normalization, adapters for `gitleaks` and `osv-scanner`, one MCP tool over the official Go SDK, and a single binary exposing the same core through `scan` and `serve`. Scan results are bound to the repository, the commit and a dirty-tree fingerprint.
 
+## Demo
+
+`scripts/demo.sh` runs the real loop against a throwaway copy of the checked-in
+Go fixture and prints the four beats the product promises, in order: a
+confirmed issue, a rejected false positive, a verified fix and residual risk.
+See [docs/DEMO.md](docs/DEMO.md).
+
 ## Installation (planned)
 
 Nothing is published yet, so neither path below works today. They are recorded so the shape is not a surprise later.
 
 **Tagged release binaries** will be the supported way to install, for Linux, macOS and Windows, with checksums and signing where the platform supports it. A tool whose subject is supply-chain assurance should ship artifacts you can verify.
+
+The release tooling is prepared but not published: `.github/workflows/release.yml` is triggered by a `v*` tag, cross-compiles macOS and Linux binaries, writes `checksums.txt` (sha256), and records GitHub build provenance. `scripts/install.sh` downloads a tagged binary and refuses to install it unless the checksum matches. The tag itself is a human action; see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for what must be true before it is cut.
 
 **`go install github.com/aniklavida/code-clearance/cmd/code-clearance@latest`** will also work, for people who already have a Go toolchain and prefer it. It builds on your machine, so it produces nothing signed — `code-clearance version` says so rather than leaving you to guess.
 

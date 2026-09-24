@@ -42,6 +42,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - A required-check audit test enumerating every run status and asserting none converts an unavailable required check into a pass.
 - Actionable failure diagnostics that name the failed command/tool and state the safe next action.
 - Configuration schema migration: `policy.MigrateConfig` normalises version aliases and legacy scope shapes, and rejects unknown versions with an actionable error.
+- Evidence engine core: a scope planner resolving Quick/Full/Release file sets, a parallel and cancellable adapter runner with explicit timeouts, and stack/tool discovery.
+- Deterministic finding fingerprints, single-adapter deduplication and cross-tool correlation that preserve every constituent source record.
+- Real process adapters for Gitleaks, OSV-Scanner, Semgrep and Trivy, each recording its tool version, exact command, exit semantics and raw output.
+- `clearance_run` and `clearance_report` MCP tools with per-profile policy evaluation, backed by the `run` and `report` CLI subcommands through one core.
+- Git and dirty-tree scoping that binds every report to repository identity, commit SHA and a working-tree fingerprint.
+- CI that installs the real scanners and fails the build when a scanner-backed test silently skips.
+- A tag-triggered release workflow (`.github/workflows/release.yml`) that cross-compiles macOS (amd64/arm64) and Linux (amd64/arm64), publishes `checksums.txt` (sha256), and records GitHub build provenance with `actions/attest-build-provenance`.
+- `scripts/install.sh`, which downloads a tagged binary and refuses to install it unless its sha256 matches the published `checksums.txt`.
+- A Homebrew formula template under `packaging/homebrew/` for users who prefer a package manager (not yet published to any tap).
+- A `Dockerfile` for an isolated CLI run, with external scanners provided by the user (see `docs/DEMO.md`).
+- A runnable `scripts/demo.sh` and `docs/DEMO.md` exercising the locked demo order: confirmed issue, rejected false positive, verified fix, residual risk.
+- `docs/RELEASE_NOTES_v1.0.md` and a box-by-box `docs/RELEASE_CHECKLIST.md` recording exactly what is proven versus pending before v1.0.
 
 ### Security
 
@@ -52,5 +64,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Locked the technical foundation: Go, the official MCP Go SDK, and a lightweight core with external scanner adapters.
 - Expanded version 1.0 platform scope to Linux, macOS and Windows.
+- The report-schema guarantee "an unavailable required check is never a pass" is now expressed through the optional `uncovered.required_incomplete` boolean, so a missing *optional* scanner no longer forces an otherwise valid report to be `incomplete`. The invariant itself is unchanged and still enforced for required checks.
+
+### Fixed
+
+- Reports produced by a normal scan are now always valid against `schemas/report.schema.json`: correlation no longer emits `null` for `related_finding_ids`/`duplicate_finding_ids` on single-member findings, and runs with no findings emit `[]` rather than `null`.
 
 [Unreleased]: https://github.com/aniklavida/code-clearance/commits/main

@@ -378,3 +378,54 @@ func TestCorrelationNeverDeletesSourceRecords(t *testing.T) {
 		t.Fatal("raw artifact references corrupted or lost")
 	}
 }
+
+// The published report schema requires related_finding_ids,
+// duplicate_finding_ids and verification_runs to be arrays on every finding,
+// including findings nested inside runs. A single-member correlation group is
+// the most common case, and correlation used to leave those slices nil for it,
+// so a valid scan could emit a report that failed its own schema. Dogfooding
+// the CLI on this repository surfaced it; this pins it.
+func TestCorrelateReport_SingleFindingHasNonNilLinkArrays(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "normalize", "testdata", "osv-scanner.json"))
+	if err != nil {
+		t.Fatalf("read osv-scanner testdata: %v", err)
+	}
+	findings, err := normalize.Ingest("osv-scanner", "v2.5.1", "json", data)
+	if err != nil {
+		t.Fatalf("ingest osv-scanner: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 fixture finding, got %d", len(findings))
+	}
+
+	report := evidence.Report{
+		Runs: []evidence.RunOutcome{
+			{Tool: "osv-scanner", ToolVersion: "v2.5.1", Status: evidence.StatusOK, Findings: findings},
+			// A clean or missing scanner produces no findings at all. The
+			// schema still requires the run's findings to be an array.
+			{Tool: "gitleaks", ToolVersion: "v8.30.1", Status: evidence.StatusNotInstalled},
+		},
+	}
+	correlate.CorrelateReport(&report)
+
+	if len(report.Findings) != 1 {
+		t.Fatalf("expected 1 correlated finding, got %d", len(report.Findings))
+	}
+	if report.Findings[0].RelatedFindingIDs == nil {
+		t.Error("top-level related_finding_ids is nil; schema requires an array")
+	}
+	if report.Findings[0].DuplicateFindingIDs == nil {
+		t.Error("top-level duplicate_finding_ids is nil; schema requires an array")
+	}
+	if len(report.Runs) == 2 {
+		if report.Runs[0].Findings[0].RelatedFindingIDs == nil {
+			t.Error("run-nested related_finding_ids is nil; schema requires an array")
+		}
+		if report.Runs[0].Findings[0].DuplicateFindingIDs == nil {
+			t.Error("run-nested duplicate_finding_ids is nil; schema requires an array")
+		}
+		if report.Runs[1].Findings == nil {
+			t.Error("a run with no findings has a nil findings array; schema requires an array")
+		}
+	}
+}

@@ -87,6 +87,10 @@
         "unavailable": {
           "type": "array",
           "items": { "$ref": "#/$defs/uncovered_check" }
+        },
+        "required_incomplete": {
+          "type": "boolean",
+          "description": "True when at least one required check could not complete. Optional; omitted when false."
         }
       },
       "additionalProperties": false
@@ -146,12 +150,11 @@
           "uncovered": {
             "type": "object",
             "properties": {
-              "unavailable": {
-                "type": "array",
-                "minItems": 1
+              "required_incomplete": {
+                "enum": [true]
               }
             },
-            "required": ["unavailable"]
+            "required": ["required_incomplete"]
           }
         },
         "required": ["uncovered"]
