@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -30,7 +31,11 @@ func getOrBuildBinary(t *testing.T) string {
 			buildErr = err
 			return
 		}
-		binPath := filepath.Join(tmpDir, "code-clearance")
+		binName := "code-clearance"
+		if runtime.GOOS == "windows" {
+			binName += ".exe"
+		}
+		binPath := filepath.Join(tmpDir, binName)
 		cmd := exec.Command("go", "build", "-o", binPath, ".")
 		cmd.Dir = "."
 		out, err := cmd.CombinedOutput()
